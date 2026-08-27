@@ -31,6 +31,44 @@ export function FeedViewer() {
   const [index, setIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  async function interact(kind: string, extra?: Record<string, unknown>) {
+    if (!items[index]) return;
+    const contentItemId = items[index].item.id;
+    const path =
+      kind === "save"
+        ? "/api/saves"
+        : kind === "report"
+          ? "/api/reports"
+          : "/api/feed/interact";
+    const res = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contentItemId, kind, ...extra }),
+    });
+    if (res.status === 401) {
+      setNotice("Sign in to keep this across devices.");
+      return;
+    }
+    if (!res.ok) {
+      setNotice("That action did not save. Try again.");
+      return;
+    }
+    if (kind === "save") setNotice("Saved to your library.");
+    if (kind === "hide") {
+      setNotice("We will show fewer items like this.");
+      setItems((current) => current.filter((_, i) => i !== index));
+    }
+    if (kind === "report") setNotice("Report recorded for moderation.");
+    if (kind === "share") {
+      await navigator.clipboard.writeText(`${window.location.origin}/share/${items[index].item.slug}`);
+      setNotice("Share link copied. Source links stay with the public page.");
+    }
+    if (kind === "explain_deeper" || kind === "simplify" || kind === "show_example") {
+      setNotice("Logged. When an AI provider is configured, a follow-up item is queued; until then the feed stays on prepared content.");
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -111,6 +149,7 @@ export function FeedViewer() {
           </CardTitle>
           <CardDescription>{current.item.learningObjective}</CardDescription>
         </CardHeader>
+        {notice ? <p className="mb-3 text-sm text-foreground-muted">{notice}</p> : null}
         <div className="prose-oriel max-w-none text-[1.05rem] leading-7 text-foreground">
           {current.item.bodyText.split("\n\n").map((para) => (
             <p key={para.slice(0, 24)} className="mb-4">
@@ -119,29 +158,29 @@ export function FeedViewer() {
           ))}
         </div>
         <CardFooter className="mt-6 flex flex-wrap gap-2">
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={() => void interact("save")}>
             <Bookmark data-icon="start" />
             Save
           </Button>
-          <Button variant="ghost" size="sm">
+          <Button variant="ghost" size="sm" onClick={() => void interact("explain_deeper")}>
             <Sparkles data-icon="start" />
             Explain deeper
           </Button>
-          <Button variant="ghost" size="sm">
+          <Button variant="ghost" size="sm" onClick={() => void interact("simplify")}>
             Simplify
           </Button>
-          <Button variant="ghost" size="sm">
+          <Button variant="ghost" size="sm" onClick={() => void interact("show_example")}>
             Show example
           </Button>
-          <Button variant="ghost" size="sm">
+          <Button variant="ghost" size="sm" onClick={() => void interact("share")}>
             <Share data-icon="start" />
             Share
           </Button>
-          <Button variant="ghost" size="sm">
+          <Button variant="ghost" size="sm" onClick={() => void interact("hide")}>
             <EyeOff data-icon="start" />
             Hide
           </Button>
-          <Button variant="ghost" size="sm">
+          <Button variant="ghost" size="sm" onClick={() => void interact("report")}>
             <Flag data-icon="start" />
             Report
           </Button>
@@ -151,7 +190,23 @@ export function FeedViewer() {
         <Button variant="outline" onClick={() => setIndex((i) => Math.max(0, i - 1))} disabled={index === 0}>
           Previous
         </Button>
-        <Button onClick={() => setIndex((i) => Math.min(items.length - 1, i + 1))} disabled={index === items.length - 1}>
+        <Button
+          onClick={() => {
+            const currentItem = items[index];
+            if (currentItem) {
+              void fetch("/api/feed", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  contentItemId: currentItem.item.id,
+                  queueItemId: currentItem.queueItemId,
+                }),
+              });
+            }
+            setIndex((i) => Math.min(items.length - 1, i + 1));
+          }}
+          disabled={index === items.length - 1}
+        >
           Next item
         </Button>
       </div>
