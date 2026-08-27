@@ -1,6 +1,6 @@
 import { getCurrentSession } from "@/lib/auth/permissions";
 import { db } from "@/lib/db";
-import { profiles, progressSummaries } from "@/lib/db/schema";
+import { profiles, progressSummaries, preferences } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { Alert, AlertDescription, AlertTitle } from "@appica/ui-react/alert";
 import Link from "next/link";
@@ -22,6 +22,7 @@ export default async function ProfilePage() {
     );
   }
   const [profile] = await db.select().from(profiles).where(eq(profiles.userId, session.user.id)).limit(1);
+  const [pref] = await db.select().from(preferences).where(eq(preferences.userId, session.user.id)).limit(1);
   const [progress] = await db
     .select()
     .from(progressSummaries)
@@ -41,6 +42,12 @@ export default async function ProfilePage() {
           <dt className="text-foreground-subtle">Items completed</dt>
           <dd className="text-2xl font-serif">{progress?.itemsCompleted ?? 0}</dd>
         </div>
+        {pref?.hideStreak ? null : (
+          <div>
+            <dt className="text-foreground-subtle">Optional streak (forgiving)</dt>
+            <dd className="text-2xl font-serif">{progress?.currentStreakDays ?? 0} days</dd>
+          </div>
+        )}
       </dl>
       <div className="mt-8 flex gap-3">
         <Link href="/onboarding" className={buttonVariants({ variant: "outline" })}>

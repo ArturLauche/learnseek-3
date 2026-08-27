@@ -62,6 +62,7 @@ export default async function AdminModerationPage() {
                         payload={{ caseId: row.id, decision: "reject" }}
                         label="Reject"
                         destructive
+                        stepUp
                       />
                     </TableCell>
                   </TableRow>

@@ -16,7 +16,16 @@ const FORBIDDEN = [
   /localStorage/,
   /document\.cookie/,
   /window\.parent/,
+  /parent\.document/,
   /document\.domain/,
+  /\bfetch\s*\(/,
+  /XMLHttpRequest/,
+  /navigator\.sendBeacon/,
+  /WebSocket/,
+  /indexedDB/,
+  /sessionStorage/,
+  /while\s*\(\s*true/,
+  /for\s*\(\s*;\s*;/,
 ];
 
 function sanitize(html) {

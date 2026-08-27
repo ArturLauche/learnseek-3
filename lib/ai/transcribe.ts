@@ -1,14 +1,16 @@
 import { getEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import type { ProviderCredentials } from "./credentials";
 
 export async function transcribeAudio(params: {
   bytes: Buffer;
   filename: string;
   mimeType: string;
+  credentials?: ProviderCredentials | null;
 }): Promise<{ text: string | null; model: string; skipped?: string }> {
   const env = getEnv();
-  const base = env.AI_TRANSCRIPTION_BASE_URL || env.AI_BASE_URL;
-  const key = env.AI_TRANSCRIPTION_API_KEY || env.AI_API_KEY;
+  const base = env.AI_TRANSCRIPTION_BASE_URL || params.credentials?.baseUrl || env.AI_BASE_URL;
+  const key = env.AI_TRANSCRIPTION_API_KEY || params.credentials?.apiKey || env.AI_API_KEY;
   if (!base || !key) {
     return { text: null, model: env.AI_TRANSCRIPTION_MODEL, skipped: "unconfigured" };
   }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyDiversity,
   isEligible,
+  publicRankingExplanation,
   replenishCount,
   scoreCandidate,
   shouldReplenish,
@@ -90,5 +91,21 @@ describe("diversity and replenish", () => {
     expect(shouldReplenish(9)).toBe(true);
     expect(replenishCount(9)).toBe(6);
     expect(shouldReplenish(10)).toBe(false);
+  });
+});
+
+describe("public ranking explanations", () => {
+  it("lists factor names without private model reasoning", () => {
+    const breakdown = scoreCandidate(item({}), prefs, {
+      skipRate: 0,
+      completionRate: 0.4,
+      saveBoost: 0.1,
+      followBoost: 0,
+    });
+    const rows = publicRankingExplanation(breakdown);
+    expect(rows.map((row) => row.factor)).toEqual(
+      expect.arrayContaining(["topic_match", "source_quality", "exploration"]),
+    );
+    expect(JSON.stringify(rows)).not.toMatch(/chain of thought|hidden reasoning/i);
   });
 });

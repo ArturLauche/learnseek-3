@@ -8,6 +8,9 @@ import { recordAdminAction } from "@/lib/admin/audit";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { notify } from "@/lib/notifications";
+import { storeEmbedding } from "@/lib/ai/dedup";
+import { verifyStepUpPassword } from "@/lib/admin/step-up";
+import { autoTagContent } from "@/lib/content/autotag";
 
 const schema = z.object({
   caseId: z.string().uuid(),
@@ -15,6 +18,7 @@ const schema = z.object({
   note: z.string().max(2000).optional(),
   appealId: z.string().uuid().optional(),
   confirmed: z.literal(true),
+  stepUpPassword: z.string().min(12).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -23,6 +27,10 @@ export async function POST(request: NextRequest) {
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const parsed = schema.safeParse(await request.json());
   if (!parsed.success) return NextResponse.json({ error: "Confirmation required" }, { status: 400 });
+  if (parsed.data.decision === "reject") {
+    const stepped = await verifyStepUpPassword(session.user.email, parsed.data.stepUpPassword);
+    if (!stepped) return NextResponse.json({ error: "Password confirmation required" }, { status: 403 });
+  }
 
   const [moderationCase] = await db
     .select()
@@ -52,6 +60,22 @@ export async function POST(request: NextRequest) {
         updatedAt: new Date(),
       })
       .where(eq(contentItems.id, moderationCase.contentItemId));
+    if (parsed.data.decision === "approve") {
+      const [item] = await db
+        .select()
+        .from(contentItems)
+        .where(eq(contentItems.id, moderationCase.contentItemId))
+        .limit(1);
+      if (item) {
+        await storeEmbedding(item.id, `${item.title}\n${item.learningObjective}\n${item.bodyText}`).catch(
+          () => null,
+        );
+        await autoTagContent({
+          contentItemId: item.id,
+          format: item.format,
+        }).catch(() => null);
+      }
+    }
   }
 
   if (parsed.data.appealId) {

@@ -11,8 +11,24 @@ import { moderateSubmission } from "@/lib/moderation/pipeline";
 import { compileArtifact } from "@/lib/sandbox/compile";
 import { storeEmbedding } from "@/lib/ai/dedup";
 import { logger } from "@/lib/logger";
+import { deliverNotification } from "@/lib/notify/deliver";
+import { startSpan, recordMetric } from "@/lib/otel";
 
 export async function handleJob(queueName: string, jobName: string, data: Record<string, unknown>) {
+  const span = startSpan("job.handle", { queue: queueName, name: jobName });
+  try {
+    const result = await handleJobInner(queueName, jobName, data);
+    recordMetric(`queue.${queueName}.ok`);
+    await span.end({ ok: true });
+    return result;
+  } catch (error) {
+    recordMetric(`queue.${queueName}.error`);
+    await span.end({ ok: false }, "error");
+    throw error;
+  }
+}
+
+async function handleJobInner(queueName: string, jobName: string, data: Record<string, unknown>) {
   if (queueName === "feed-replenish") {
     return replenishFeedQueue({
       userId: typeof data.userId === "string" ? data.userId : null,
@@ -72,7 +88,10 @@ export async function handleJob(queueName: string, jobName: string, data: Record
   }
 
   if (queueName === "notifications") {
-    return { delivered: "in_app", id: data.notificationId };
+    if (typeof data.notificationId === "string") {
+      return deliverNotification(data.notificationId);
+    }
+    return { ok: false, reason: "missing_notification" };
   }
 
   logger.info({ queueName, jobName }, "job received with no specialized handler");

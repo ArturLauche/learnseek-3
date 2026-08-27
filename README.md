@@ -49,9 +49,21 @@ Oriel talks to any OpenAI-compatible HTTP API:
 - Optional separate transcription endpoint
 - Timeouts, concurrency, JSON schema flag, daily token budget
 
-If these are empty, generation jobs stay idle and the feed serves seeded editorial items. That is intentional — never a fake success.
+If these are empty, generation jobs stay idle unless the user stored a BYOK credential. The feed still serves seeded editorial items. That is intentional — never a fake success.
 
-User BYOK: encrypted at rest with `ENCRYPTION_KEY`, last four characters stored for display, never shared across users.
+User BYOK: encrypted at rest with `ENCRYPTION_KEY` (AES-256-GCM). After save, Oriel stores and displays only the last four characters. Keys are scoped to the owning user and used for that user's generation/transcription calls. They are never shared across users. Platform moderation and embeddings still use the operator env key when present, so ranking space stays consistent.
+
+## Email and web push
+
+Optional. Leave `SMTP_*` and `VAPID_*` empty for a local install: in-app notifications still work, and Settings says honestly that email/push are not configured. Set `SMTP_HOST` + `SMTP_FROM` to send mail via nodemailer. Set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `NEXT_PUBLIC_VAPID_PUBLIC_KEY` to enable Web Push. Expired browser subscriptions (HTTP 410) are deleted.
+
+## Observability
+
+`OTEL_EXPORTER_OTLP_ENDPOINT` enables JSON OTLP export of traces (`/v1/traces`) and metrics (`/v1/metrics`). Attribute keys such as `password`, `apiKey`, `prompt`, `fullText`, and ciphertext are dropped. If the endpoint is unset, export is a no-op.
+
+## Video pipeline
+
+The Docker image installs `ffmpeg`/`ffprobe`. Uploaded video is probed, transcoded (H.264/AAC), thumbnailed, sampled at 25/50/75%, audio-extracted, transcribed when a transcription endpoint exists, language-detected, and chapter-split from silence. Moderation, topic, and embedding jobs follow. Without ffmpeg the upload is recorded as metadata-only.
 
 ## Storage
 
@@ -85,8 +97,10 @@ Migrations live in `drizzle/`. The first migration enables `vector` and creates 
 
 ```bash
 pnpm test          # unit + integration (feed integration needs Postgres/Redis)
-pnpm test:e2e      # Playwright journeys (requires app + db)
+pnpm test:e2e      # Playwright user + admin journeys (requires app + db)
 ```
+
+Admin Playwright covers login, user suspend (step-up password), and a moderation decision against the real database.
 
 Workers: `pnpm worker` consumes BullMQ queues (`generation`, `media`, `moderation`, `transcription`, `embedding`, `notifications`, `scan`, `compile`, `feed-replenish`). Compile jobs spawn `worker/compile-child.mjs` with a 64MB heap and a timeout — untrusted JSX is never compiled in the Next.js process.
 
@@ -104,6 +118,7 @@ Set `ADMIN_BOOTSTRAP_EMAIL` and `ADMIN_BOOTSTRAP_PASSWORD` (min 12 chars) before
 4. `docker compose up --build` or run `pnpm build && pnpm start` plus `pnpm worker`.
 5. Put TLS in front of app and sandbox.
 6. Optional: `--profile clamav` for virus scanning; point `SCANNER_MODE=clamav`.
-7. Optional OTLP endpoint for traces.
+7. Optional OTLP endpoint for traces and metrics (`OTEL_EXPORTER_OTLP_ENDPOINT`).
+8. Optional SMTP and VAPID keys for email and web push. Leave them empty to keep in-app-only delivery.
 
 Oriel is free software. There is no billing integration on purpose.

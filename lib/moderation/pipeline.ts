@@ -10,6 +10,7 @@ import { moderateText } from "@/lib/ai/provider";
 import { decideOutcome } from "./policy";
 import { getEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import { resolveProviderCredentials } from "@/lib/ai/credentials";
 
 const HIGH_RISK = new Set([
   "malware",
@@ -28,7 +29,8 @@ export async function moderateSubmission(params: {
   policyVersion?: string;
 }) {
   const env = getEnv();
-  const result = await moderateText(params.text.slice(0, 12_000));
+  const credentials = await resolveProviderCredentials(null);
+  const result = await moderateText(params.text.slice(0, 12_000), credentials);
   const maxConfidence = Math.max(0, ...result.categories.map((c) => c.confidence));
   const hasHighRisk = result.categories.some((c) => HIGH_RISK.has(c.category));
   const outcome = decideOutcome({

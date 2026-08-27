@@ -4,6 +4,8 @@ import { db } from "@/lib/db";
 import { providerRequests } from "@/lib/db/schema";
 import { learningItemSchema, moderationResultSchema, type LearningItemDraft, type ModerationResult } from "./schemas";
 import { stripSensitive } from "@/lib/pii";
+import { startSpan, recordMetric } from "@/lib/otel";
+import type { ProviderCredentials } from "./credentials";
 
 type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
@@ -111,9 +113,11 @@ async function chatCompletion(params: {
   jsonSchema?: Record<string, unknown>;
   purpose: string;
   jobId?: string;
+  credentials: ProviderCredentials;
 }): Promise<string> {
   const env = getEnv();
-  if (!env.AI_BASE_URL || !env.AI_API_KEY) {
+  const creds = params.credentials;
+  if (!creds.baseUrl || !creds.apiKey) {
     throw new ProviderError("AI provider is not configured");
   }
   if (breaker.open) {
@@ -124,6 +128,12 @@ async function chatCompletion(params: {
     let lastError: Error | null = null;
     for (let attempt = 0; attempt < 4; attempt += 1) {
       const started = Date.now();
+      const span = startSpan("ai.chat", {
+        purpose: params.purpose,
+        model: params.model,
+        source: creds.source,
+        providerName: creds.providerName,
+      });
       try {
         const body: Record<string, unknown> = {
           model: params.model,
@@ -138,10 +148,10 @@ async function chatCompletion(params: {
         } else {
           body.response_format = { type: "json_object" };
         }
-        const response = await fetch(new URL("/chat/completions", env.AI_BASE_URL), {
+        const response = await fetch(new URL("/chat/completions", creds.baseUrl), {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${env.AI_API_KEY}`,
+            Authorization: `Bearer ${creds.apiKey}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify(body),
@@ -152,13 +162,15 @@ async function chatCompletion(params: {
           const retryable = response.status === 429 || response.status >= 500;
           await db.insert(providerRequests).values({
             jobId: params.jobId,
-            providerName: env.AI_PROVIDER_NAME,
+            providerName: creds.providerName,
             model: params.model,
             purpose: params.purpose,
             status: "error",
             latencyMs,
             errorSafe: `http_${response.status}`,
           });
+          await span.end({ latencyMs, statusCode: response.status }, "error");
+          recordMetric("ai.chat.error");
           if (retryable) {
             breaker.fail();
             await sleep(2 ** attempt * 400);
@@ -175,7 +187,7 @@ async function chatCompletion(params: {
         breaker.success();
         await db.insert(providerRequests).values({
           jobId: params.jobId,
-          providerName: env.AI_PROVIDER_NAME,
+          providerName: creds.providerName,
           model: params.model,
           purpose: params.purpose,
           status: "ok",
@@ -183,10 +195,16 @@ async function chatCompletion(params: {
           inputTokens: json.usage?.prompt_tokens,
           outputTokens: json.usage?.completion_tokens,
         });
+        await span.end({
+          latencyMs,
+          tokens: (json.usage?.prompt_tokens ?? 0) + (json.usage?.completion_tokens ?? 0),
+        });
+        recordMetric("ai.chat.ok");
         return content;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error("unknown");
         breaker.fail();
+        await span.end({ attempt }, "error");
         logger.warn({ attempt, purpose: params.purpose, err: lastError.message }, "provider request failed");
         await sleep(2 ** attempt * 400);
       }
@@ -201,11 +219,15 @@ export async function generateLearningItem(input: {
   knowledgeLevel?: string;
   language?: string;
   avoid?: string[];
+  credentials: ProviderCredentials;
+  jobId?: string;
 }): Promise<LearningItemDraft> {
   const env = getEnv();
   const raw = await chatCompletion({
-    model: env.AI_MODEL,
+    model: input.credentials.model || env.AI_MODEL,
     purpose: "generate_item",
+    jobId: input.jobId,
+    credentials: input.credentials,
     messages: [
       {
         role: "system",
@@ -214,22 +236,32 @@ export async function generateLearningItem(input: {
       },
       {
         role: "user",
-        content: stripSensitive(JSON.stringify(input)),
+        content: stripSensitive(JSON.stringify({
+          topic: input.topic,
+          format: input.format,
+          knowledgeLevel: input.knowledgeLevel,
+          language: input.language,
+          avoid: input.avoid,
+        })),
       },
     ],
   });
   return learningItemSchema.parse(JSON.parse(raw));
 }
 
-export async function moderateText(text: string): Promise<ModerationResult> {
+export async function moderateText(
+  text: string,
+  credentials?: ProviderCredentials | null,
+): Promise<ModerationResult> {
   const env = getEnv();
-  if (!isAiConfigured()) {
+  if (!credentials?.baseUrl || !credentials.apiKey) {
     return heuristicModeration(text);
   }
   try {
     const raw = await chatCompletion({
       model: env.AI_MODERATION_MODEL || env.AI_FAST_MODEL,
       purpose: "moderation",
+      credentials,
       messages: [
         {
           role: "system",
@@ -274,23 +306,35 @@ export function heuristicModeration(text: string): ModerationResult {
   };
 }
 
-export async function embedTexts(texts: string[]): Promise<number[][] | null> {
+export async function embedTexts(
+  texts: string[],
+  credentials?: ProviderCredentials | null,
+): Promise<number[][] | null> {
   const env = getEnv();
-  if (!env.AI_BASE_URL || !env.AI_API_KEY) return null;
+  const baseUrl = credentials?.baseUrl ?? env.AI_BASE_URL;
+  const apiKey = credentials?.apiKey ?? env.AI_API_KEY;
+  if (!baseUrl || !apiKey) return null;
+  const span = startSpan("ai.embed", { source: credentials?.source ?? "env", count: texts.length });
   try {
-    const response = await fetch(new URL("/embeddings", env.AI_BASE_URL), {
+    const response = await fetch(new URL("/embeddings", baseUrl), {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${env.AI_API_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ model: env.AI_EMBEDDING_MODEL, input: texts }),
       signal: AbortSignal.timeout(env.AI_REQUEST_TIMEOUT_MS),
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      await span.end({ statusCode: response.status }, "error");
+      return null;
+    }
     const json = (await response.json()) as { data?: { embedding: number[] }[] };
+    await span.end({ vectors: json.data?.length ?? 0 });
+    recordMetric("ai.embed.ok");
     return json.data?.map((row) => row.embedding) ?? null;
   } catch {
+    await span.end({}, "error");
     return null;
   }
 }

@@ -8,11 +8,13 @@ import { recordAdminAction } from "@/lib/admin/audit";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { canPublish } from "@/lib/content/visibility";
+import { verifyStepUpPassword } from "@/lib/admin/step-up";
 
 const schema = z.object({
   contentItemId: z.string().uuid(),
   action: z.enum(["publish", "unpublish", "feature", "takedown"]),
   confirmed: z.literal(true),
+  stepUpPassword: z.string().min(12).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -23,6 +25,10 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: "Confirmation required" }, { status: 400 });
   const [item] = await db.select().from(contentItems).where(eq(contentItems.id, parsed.data.contentItemId)).limit(1);
   if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (parsed.data.action === "takedown") {
+    const stepped = await verifyStepUpPassword(session.user.email, parsed.data.stepUpPassword);
+    if (!stepped) return NextResponse.json({ error: "Password confirmation required" }, { status: 403 });
+  }
 
   if (parsed.data.action === "publish") {
     const sources = await db

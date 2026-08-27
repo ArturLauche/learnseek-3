@@ -54,6 +54,7 @@ const envSchema = z.object({
   SMTP_FROM: z.string().optional(),
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),
+  NEXT_PUBLIC_VAPID_PUBLIC_KEY: z.string().optional(),
   FEATURE_COMMENTS: z
     .string()
     .optional()

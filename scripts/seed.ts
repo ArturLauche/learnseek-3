@@ -27,6 +27,8 @@ import {
   quizQuestions,
   generatedArtifacts,
   policyConfigs,
+  notificationTemplates,
+  announcements,
 } from "@/lib/db/schema";
 import { ROLE_PERMISSIONS } from "@/lib/auth/permissions";
 import { SEED_ITEMS, SEED_TOPICS } from "@/lib/seed/catalog";
@@ -294,6 +296,32 @@ async function main() {
       body: { comments: false, sensitiveSourcesRequired: true },
     })
     .onConflictDoNothing();
+
+  await db
+    .insert(notificationTemplates)
+    .values([
+      {
+        slug: "daily-suggestion",
+        channel: "in_app",
+        title: "A prepared item is waiting",
+        body: "Open Oriel when you have a minute. Nothing is lost if you wait.",
+      },
+      {
+        slug: "moderation-update",
+        channel: "in_app",
+        title: "A moderation update",
+        body: "A human reviewed your submission. Open notifications for the outcome.",
+      },
+    ])
+    .onConflictDoNothing();
+
+  const [existingAnnouncement] = await db.select().from(announcements).limit(1);
+  if (!existingAnnouncement) {
+    await db.insert(announcements).values({
+      title: "Comments stay off",
+      body: "Public comments remain disabled until the moderation pipeline is complete for that surface.",
+    });
+  }
 
   const adminEmail = process.env.ADMIN_BOOTSTRAP_EMAIL;
   const adminPassword = process.env.ADMIN_BOOTSTRAP_PASSWORD;

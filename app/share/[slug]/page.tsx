@@ -5,6 +5,35 @@ import { notFound } from "next/navigation";
 import { Badge } from "@appica/ui-react/badge";
 import Link from "next/link";
 import { buttonVariants } from "@appica/ui-react/button";
+import type { Metadata } from "next";
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const [item] = await db
+    .select({
+      title: contentItems.title,
+      learningObjective: contentItems.learningObjective,
+    })
+    .from(contentItems)
+    .where(
+      and(
+        eq(contentItems.slug, slug),
+        eq(contentItems.publicationState, "published"),
+        eq(contentItems.visibility, "public"),
+        isNull(contentItems.deletedAt),
+      ),
+    )
+    .limit(1);
+  if (!item) return { title: "Not found" };
+  return {
+    title: item.title,
+    description: item.learningObjective,
+    openGraph: {
+      title: item.title,
+      description: item.learningObjective,
+    },
+  };
+}
 
 export default async function SharePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;

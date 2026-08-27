@@ -15,10 +15,11 @@ import { moderateSubmission } from "@/lib/moderation/pipeline";
 import { findSemanticDuplicate, storeEmbedding } from "./dedup";
 import { slugify } from "@/lib/slug";
 import { sha256 } from "@/lib/hash";
-import { isAiConfigured } from "@/lib/env";
 import { generateLearningItem } from "./provider";
+import { resolveProviderCredentials } from "./credentials";
 import { logger } from "@/lib/logger";
 import { stripSensitive } from "@/lib/pii";
+import { autoTagContent } from "@/lib/content/autotag";
 
 export async function persistLearningDraft(params: {
   draft: LearningItemDraft;
@@ -155,6 +156,7 @@ export async function persistLearningDraft(params: {
     await storeEmbedding(item.id, `${item.title}\n${item.learningObjective}\n${item.bodyText}`).catch(
       () => null,
     );
+    await autoTagContent({ contentItemId: item.id, format: item.format }).catch(() => null);
   }
 
   if (params.jobId) {
@@ -182,11 +184,13 @@ export async function runGenerationJob(input: {
   parentContentItemId?: string;
   instruction?: string;
 }) {
-  if (!isAiConfigured()) {
+  const credentials = await resolveProviderCredentials(input.userId);
+  if (!credentials) {
     return {
       skipped: true,
       reason: "unconfigured",
-      detail: "AI provider is not configured; serving prepared editorial content instead.",
+      detail:
+        "No platform AI key and no BYOK credential for this user; serving prepared editorial content instead.",
     };
   }
   const topic = input.topic ?? "practical-life";
@@ -201,6 +205,8 @@ export async function runGenerationJob(input: {
     knowledgeLevel: input.knowledgeLevel,
     language: input.language ?? "en",
     avoid: input.avoid,
+    credentials,
+    jobId: input.jobId,
   });
   if (input.instruction === "simplify" && parent) {
     draft.depth = "skim";

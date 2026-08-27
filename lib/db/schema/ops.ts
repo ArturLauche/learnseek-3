@@ -1,4 +1,4 @@
-import { boolean, index, jsonb, pgTable, text, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, jsonb, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { user } from "./auth";
 import { notificationChannelEnum } from "./enums";
 import { createdAt, timestamptz, updatedAt } from "./helpers";
@@ -91,4 +91,43 @@ export const recoControls = pgTable("reco_controls", {
   emergencyOverride: jsonb("emergency_override").$type<Record<string, unknown>>(),
   createdAt,
   updatedAt,
+});
+
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    userAgent: text("user_agent"),
+    createdAt,
+  },
+  (table) => [
+    uniqueIndex("push_subscriptions_endpoint_uidx").on(table.userId, table.endpoint),
+    index("push_subscriptions_user_idx").on(table.userId),
+  ],
+);
+
+export const notificationTemplates = pgTable("notification_templates", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  slug: text("slug").notNull().unique(),
+  channel: notificationChannelEnum("channel").notNull().default("in_app"),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  createdAt,
+  updatedAt,
+});
+
+export const importExportJobs = pgTable("import_export_jobs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  kind: text("kind").notNull(),
+  status: text("status").notNull().default("queued"),
+  objectKey: text("object_key"),
+  actorUserId: text("actor_user_id").references(() => user.id, { onDelete: "set null" }),
+  createdAt,
+  completedAt: timestamptz("completed_at"),
 });

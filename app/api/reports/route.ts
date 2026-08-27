@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { feedInteractions, reportCategories, reports } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { enqueue } from "@/lib/queue";
+import { moderateSubmission } from "@/lib/moderation/pipeline";
 
 const schema = z.object({
   contentItemId: z.string().uuid(),
@@ -36,9 +36,10 @@ export async function POST(request: NextRequest) {
     contentItemId: parsed.data.contentItemId,
     kind: "report",
   });
-  await enqueue("moderation", "report", {
+  await moderateSubmission({
     contentItemId: parsed.data.contentItemId,
-    dedupeKey: `report:${parsed.data.contentItemId}:${session?.user.id ?? "anon"}`,
+    text: parsed.data.details ?? `user report: ${parsed.data.category}`,
+    safetyClass: "general",
   });
   return NextResponse.json({ ok: true });
 }

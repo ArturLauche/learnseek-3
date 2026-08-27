@@ -5,21 +5,45 @@ import { Field, FieldDescription, FieldLabel } from "@appica/ui-react/field";
 import { Input } from "@appica/ui-react/input";
 import { Button } from "@appica/ui-react/button";
 import { Checkbox } from "@appica/ui-react/checkbox";
-import { Alert, AlertDescription } from "@appica/ui-react/alert";
+import { Alert, AlertDescription, AlertTitle } from "@appica/ui-react/alert";
 
 export function AccountSettings({
   email,
   byok,
+  delivery,
+  vapidPublicKey,
 }: {
   email: string;
   byok: { providerName: string; keyLastFour: string; baseUrl: string }[];
+  delivery: { email: boolean; push: boolean };
+  vapidPublicKey?: string;
 }) {
   const [message, setMessage] = useState<string | null>(null);
   return (
     <div className="mt-8 space-y-10">
       <section>
         <h2 className="font-serif text-2xl">Notifications</h2>
-        <p className="mt-1 text-sm text-foreground-muted">Reminders exist to help you return, not to pressure you.</p>
+        <p className="mt-1 text-sm text-foreground-muted">
+          Reminders exist to help you return, not to pressure you. In-app notices always work when enabled.
+        </p>
+        {!delivery.email ? (
+          <Alert variant="warning" className="mt-3">
+            <AlertTitle>Email delivery is off on this instance</AlertTitle>
+            <AlertDescription>
+              SMTP_HOST and SMTP_FROM are unset. Toggling email below stores a preference only; no messages leave this
+              server until the operator configures SMTP.
+            </AlertDescription>
+          </Alert>
+        ) : null}
+        {!delivery.push ? (
+          <Alert variant="warning" className="mt-3">
+            <AlertTitle>Web push is off on this instance</AlertTitle>
+            <AlertDescription>
+              VAPID keys are unset. The push preference is saved, but browsers will not receive pushes until the
+              operator sets VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY.
+            </AlertDescription>
+          </Alert>
+        ) : null}
         <form
           className="mt-4 space-y-2 text-sm"
           onSubmit={async (event) => {
@@ -30,23 +54,31 @@ export function AccountSettings({
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 emailEnabled: form.get("emailEnabled") === "on",
+                pushEnabled: form.get("pushEnabled") === "on",
                 pathReminders: form.get("pathReminders") === "on",
                 dailySuggestions: form.get("dailySuggestions") === "on",
                 quietHoursStart: form.get("quietHoursStart"),
                 quietHoursEnd: form.get("quietHoursEnd"),
+                hideStreak: form.get("hideStreak") === "on",
               }),
             });
             setMessage("Notification preferences saved.");
           }}
         >
           <label className="flex items-center gap-2">
-            <Checkbox name="emailEnabled" /> Optional email
+            <Checkbox name="emailEnabled" /> Optional email {delivery.email ? "" : "(not delivered yet)"}
+          </label>
+          <label className="flex items-center gap-2">
+            <Checkbox name="pushEnabled" /> Optional browser push {delivery.push ? "" : "(not delivered yet)"}
           </label>
           <label className="flex items-center gap-2">
             <Checkbox name="pathReminders" defaultChecked /> Path reminders
           </label>
           <label className="flex items-center gap-2">
             <Checkbox name="dailySuggestions" defaultChecked /> Daily suggestions
+          </label>
+          <label className="flex items-center gap-2">
+            <Checkbox name="hideStreak" /> Hide optional streak on my profile
           </label>
           <Field name="quietHoursStart">
             <FieldLabel>Quiet hours start</FieldLabel>
@@ -60,11 +92,48 @@ export function AccountSettings({
             Save channels
           </Button>
         </form>
+        {delivery.push && vapidPublicKey ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-3"
+            onClick={async () => {
+              if (!("Notification" in window) || !("serviceWorker" in navigator)) {
+                setMessage("This browser does not support web push.");
+                return;
+              }
+              const permission = await Notification.requestPermission();
+              if (permission !== "granted") {
+                setMessage("Push permission was not granted.");
+                return;
+              }
+              const registration = await navigator.serviceWorker.register("/sw.js");
+              const subscription = await registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: vapidPublicKey,
+              });
+              const json = subscription.toJSON();
+              await fetch("/api/push/subscribe", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  endpoint: json.endpoint,
+                  keys: json.keys,
+                }),
+              });
+              setMessage("This browser is subscribed for optional push.");
+            }}
+          >
+            Enable this browser
+          </Button>
+        ) : null}
       </section>
       <section>
         <h2 className="font-serif text-2xl">Bring your own key</h2>
         <p className="mt-1 text-sm text-foreground-muted">
-          Encrypted at rest. After save we only show the last four characters. Keys are never shared across users.
+          Encrypted at rest with AES-256-GCM. After save we only show the last four characters. Keys are never shared
+          across users and are used only for your generation calls.
         </p>
         <ul className="mt-3 text-sm">
           {byok.map((row) => (
@@ -121,14 +190,26 @@ export function AccountSettings({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => void fetch("/api/export", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "export" }) }).then(() => setMessage("Export stored in your private bucket.")) }
+            onClick={() =>
+              void fetch("/api/export", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ kind: "export" }),
+              }).then(() => setMessage("Export stored in your private bucket."))
+            }
           >
             Export my data
           </Button>
           <Button
             variant="destructive"
             size="sm"
-            onClick={() => void fetch("/api/export", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "delete" }) }).then(() => setMessage("Deletion queued.")) }
+            onClick={() =>
+              void fetch("/api/export", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ kind: "delete" }),
+              }).then(() => setMessage("Deletion queued."))
+            }
           >
             Request deletion
           </Button>

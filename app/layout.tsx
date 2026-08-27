@@ -26,7 +26,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${newsreader.variable} ${sourceSans.variable}`}>
+    <html lang="en" dir="ltr" suppressHydrationWarning className={`${newsreader.variable} ${sourceSans.variable}`}>
       <body>
         <AppProviders>{children}</AppProviders>
       </body>

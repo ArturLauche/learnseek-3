@@ -7,6 +7,7 @@ import {
   quizQuestions,
   sources,
   topics,
+  transcripts,
 } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
@@ -45,6 +46,9 @@ export default async function LearnPage({ params }: { params: Promise<{ slug: st
     .where(and(eq(generatedArtifacts.contentItemId, item.id), eq(generatedArtifacts.compileState, "compiled")))
     .limit(1);
   const sandboxOrigin = getEnv().SANDBOX_ORIGIN;
+  const transcriptRows = item.uploadId
+    ? await db.select().from(transcripts).where(eq(transcripts.uploadId, item.uploadId)).limit(1)
+    : [];
 
   return (
     <article className="mx-auto max-w-2xl px-4 py-8">
@@ -76,6 +80,12 @@ export default async function LearnPage({ params }: { params: Promise<{ slug: st
           quizId={quiz.id}
           questions={questions.map((q) => ({ id: q.id, prompt: q.prompt, choices: q.choices }))}
         />
+      ) : null}
+      {transcriptRows[0]?.fullText ? (
+        <section className="mt-10">
+          <h2 className="font-serif text-2xl">Transcript</h2>
+          <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{transcriptRows[0].fullText}</p>
+        </section>
       ) : null}
       <section className="mt-10">
         <h2 className="font-serif text-2xl">Sources</h2>

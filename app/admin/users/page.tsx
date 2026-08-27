@@ -56,6 +56,7 @@ export default async function AdminUsersPage({
                   payload={{ userId: row.id, action: "suspend" }}
                   label="Suspend"
                   destructive
+                  stepUp
                 />
                 <ConfirmForm
                   endpoint="/api/admin/users"

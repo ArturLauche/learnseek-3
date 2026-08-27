@@ -16,6 +16,10 @@ const redact = {
     "prompt",
     "fullText",
     "keyCiphertext",
+    "SMTP_PASSWORD",
+    "smtp_password",
+    "VAPID_PRIVATE_KEY",
+    "vapid_private_key",
   ],
   censor: "[redacted]",
 };

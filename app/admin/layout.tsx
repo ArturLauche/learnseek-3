@@ -10,6 +10,10 @@ const LINKS = [
   { href: "/admin/ai", label: "AI ops" },
   { href: "/admin/reco", label: "Recommendations" },
   { href: "/admin/flags", label: "Flags" },
+  { href: "/admin/notifications", label: "Templates" },
+  { href: "/admin/announcements", label: "Announcements" },
+  { href: "/admin/ops", label: "Ops" },
+  { href: "/admin/health", label: "Health" },
   { href: "/admin/audit", label: "Audit" },
 ];
 

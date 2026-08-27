@@ -5,7 +5,6 @@ import {
   scanResults,
   transcriptSegments,
   transcripts,
-  uploadAssets,
   uploads,
 } from "@/lib/db/schema";
 import { getEnv } from "@/lib/env";
@@ -16,11 +15,8 @@ import { transcribeAudio } from "@/lib/ai/transcribe";
 import { moderateSubmission } from "@/lib/moderation/pipeline";
 import { logger } from "@/lib/logger";
 import { enqueueTracked } from "@/lib/jobs";
-import { putObject } from "@/lib/storage";
-import { ffmpegAvailable, runFfmpeg } from "@/lib/media/ffmpeg";
-import { writeFile, mkdir } from "node:fs/promises";
-import path from "node:path";
-import os from "node:os";
+import { processVideoUpload } from "@/lib/media/video";
+import { resolveProviderCredentials } from "@/lib/ai/credentials";
 
 export async function recordStubScan(uploadId: string, bytes?: Buffer) {
   const env = getEnv();
@@ -111,12 +107,23 @@ export async function processUpload(uploadId: string) {
       });
     }
 
-    if ((upload.kind === "audio" || upload.kind === "video") && upload.objectKey) {
+    if (upload.kind === "video" && upload.objectKey) {
       const buf = await getObjectBuffer(upload.objectKey);
+      await processVideoUpload({
+        uploadId,
+        ownerUserId: upload.ownerUserId,
+        bytes: buf,
+        filename: upload.originalFilename ?? "video.bin",
+        mimeType: upload.mimeType ?? "video/mp4",
+      });
+    } else if (upload.kind === "audio" && upload.objectKey) {
+      const buf = await getObjectBuffer(upload.objectKey);
+      const credentials = await resolveProviderCredentials(upload.ownerUserId);
       const transcription = await transcribeAudio({
         bytes: buf,
-        filename: upload.originalFilename ?? "media.bin",
-        mimeType: upload.mimeType ?? "application/octet-stream",
+        filename: upload.originalFilename ?? "audio.bin",
+        mimeType: upload.mimeType ?? "audio/mpeg",
+        credentials,
       });
       if (transcription.text) {
         const [transcript] = await db
@@ -137,26 +144,6 @@ export async function processUpload(uploadId: string) {
           });
         }
         await moderateSubmission({ uploadId, text: transcription.text, safetyClass: "general" });
-      }
-      if (upload.kind === "video" && (await ffmpegAvailable())) {
-    const dir = path.join(os.tmpdir(), "oriel-media");
-    await mkdir(dir, { recursive: true });
-    const inputPath = path.join(dir, `${uploadId}-in`);
-    const thumbPath = path.join(dir, `${uploadId}.jpg`);
-        await writeFile(inputPath, buf);
-        const thumb = await runFfmpeg(["-y", "-i", inputPath, "-frames:v", "1", thumbPath]);
-        if (thumb.ok) {
-          const { readFile } = await import("node:fs/promises");
-          const jpeg = await readFile(thumbPath);
-          const key = `uploads/${upload.ownerUserId}/${uploadId}/thumb.jpg`;
-          await putObject({ key, body: jpeg, contentType: "image/jpeg" });
-          await db.insert(uploadAssets).values({
-            uploadId,
-            kind: "thumbnail",
-            objectKey: key,
-            mimeType: "image/jpeg",
-          });
-        }
       }
     }
 

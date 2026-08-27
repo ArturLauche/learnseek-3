@@ -54,6 +54,7 @@ export default async function AdminContentPage() {
                   payload={{ contentItemId: row.id, action: "takedown" }}
                   label="Takedown"
                   destructive
+                  stepUp
                 />
               </TableCell>
             </TableRow>

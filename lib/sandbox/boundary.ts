@@ -20,7 +20,16 @@ export const FORBIDDEN_PATTERNS = [
   /localStorage/,
   /document\.cookie/,
   /window\.parent/,
+  /parent\.document/,
   /document\.domain/,
+  /\bfetch\s*\(/,
+  /XMLHttpRequest/,
+  /navigator\.sendBeacon/,
+  /WebSocket/,
+  /indexedDB/,
+  /sessionStorage/,
+  /while\s*\(\s*true/,
+  /for\s*\(\s*;\s*;/,
 ];
 
 export function inspectSource(source: string): { ok: boolean; reasons: string[] } {
@@ -34,6 +43,7 @@ export function inspectSource(source: string): { ok: boolean; reasons: string[] 
       reasons.push(`import:${spec}`);
     }
   }
+  if (source.length > 200_000) reasons.push("oversized");
   return { ok: reasons.length === 0, reasons };
 }
 

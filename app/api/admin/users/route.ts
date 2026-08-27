@@ -8,12 +8,14 @@ import { recordAdminAction } from "@/lib/admin/audit";
 import { notify } from "@/lib/notifications";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
+import { verifyStepUpPassword } from "@/lib/admin/step-up";
 
 const schema = z.object({
   userId: z.string(),
   action: z.enum(["suspend", "warn", "restore"]),
   reason: z.string().max(500).optional(),
   confirmed: z.literal(true),
+  stepUpPassword: z.string().min(12).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -22,6 +24,10 @@ export async function POST(request: NextRequest) {
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const parsed = schema.safeParse(await request.json());
   if (!parsed.success) return NextResponse.json({ error: "Confirmation required" }, { status: 400 });
+  if (parsed.data.action === "suspend") {
+    const stepped = await verifyStepUpPassword(session.user.email, parsed.data.stepUpPassword);
+    if (!stepped) return NextResponse.json({ error: "Password confirmation required" }, { status: 403 });
+  }
 
   const status =
     parsed.data.action === "suspend"

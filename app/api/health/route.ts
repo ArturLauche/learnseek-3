@@ -5,6 +5,10 @@ import { checkProviderHealth } from "@/lib/ai/provider";
 import { getStorage } from "@/lib/storage";
 import { getEnv } from "@/lib/env";
 import { HeadBucketCommand } from "@aws-sdk/client-s3";
+import { emailConfigured } from "@/lib/notify/email";
+import { pushConfigured } from "@/lib/notify/push";
+import { otelConfigured, flushMetrics, recordMetric } from "@/lib/otel";
+import { ffmpegAvailable } from "@/lib/media/ffmpeg";
 
 export const dynamic = "force-dynamic";
 
@@ -43,10 +47,34 @@ export async function GET() {
 
   try {
     const ai = await checkProviderHealth();
-    checks.ai = { ok: ai.configured ? ai.reachable : true, detail: ai.configured ? "configured" : "unconfigured_fallback" };
+    checks.ai = {
+      ok: ai.configured ? ai.reachable : true,
+      detail: ai.configured ? "configured" : "unconfigured_fallback",
+    };
   } catch {
     checks.ai = { ok: true, detail: "fallback" };
   }
+
+  checks.email = emailConfigured()
+    ? { ok: true, detail: "smtp_configured" }
+    : { ok: true, detail: "smtp_unconfigured" };
+  checks.push = pushConfigured()
+    ? { ok: true, detail: "vapid_configured" }
+    : { ok: true, detail: "vapid_unconfigured" };
+  checks.otel = otelConfigured()
+    ? { ok: true, detail: "otlp_configured" }
+    : { ok: true, detail: "otlp_unconfigured" };
+
+  try {
+    checks.ffmpeg = (await ffmpegAvailable())
+      ? { ok: true, detail: "available" }
+      : { ok: true, detail: "missing_metadata_only" };
+  } catch {
+    checks.ffmpeg = { ok: true, detail: "missing_metadata_only" };
+  }
+
+  recordMetric("health.poll");
+  void flushMetrics();
 
   const ok = Object.values(checks).every((check) => check.ok);
   return NextResponse.json(

@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { topics, learningPaths, contentItems } from "@/lib/db/schema";
+import { topics, learningPaths, contentItems, announcements } from "@/lib/db/schema";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import Link from "next/link";
 import { Card, CardDescription, CardHeader, CardTitle } from "@appica/ui-react/card";
@@ -28,6 +28,7 @@ export default async function ExplorePage() {
     )
     .orderBy(desc(contentItems.publishedAt))
     .limit(8);
+  const notices = await db.select().from(announcements).orderBy(desc(announcements.createdAt)).limit(3);
 
   return (
     <div className="mx-auto max-w-5xl space-y-12 px-4 py-8">
@@ -36,6 +37,15 @@ export default async function ExplorePage() {
         <p className="mt-2 text-foreground-muted">
           Topics, curated paths, and recently published windows of light.
         </p>
+        {notices.length > 0 ? (
+          <ul className="mt-4 space-y-2 text-sm">
+            {notices.map((row) => (
+              <li key={row.id} className="rounded-md border border-border px-3 py-2">
+                <strong>{row.title}</strong> — {row.body}
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </header>
       <section>
         <h2 className="mb-4 font-serif text-2xl">Topics</h2>

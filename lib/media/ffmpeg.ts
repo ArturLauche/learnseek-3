@@ -32,3 +32,39 @@ export function runFfmpeg(args: string[], timeoutMs = 60_000): Promise<{ ok: boo
     });
   });
 }
+
+export function runFfprobe(filePath: string, timeoutMs = 20_000): Promise<{
+  format?: { duration?: string; format_name?: string; tags?: Record<string, string> };
+  streams?: { codec_type?: string; width?: number; height?: number }[];
+}> {
+  return new Promise((resolve) => {
+    const child = spawn("ffprobe", ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", filePath], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      resolve({});
+    }, timeoutMs);
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+    child.on("error", () => {
+      clearTimeout(timer);
+      resolve({});
+    });
+    child.on("close", () => {
+      clearTimeout(timer);
+      try {
+        resolve(
+          JSON.parse(stdout) as {
+            format?: { duration?: string; format_name?: string; tags?: Record<string, string> };
+            streams?: { codec_type?: string; width?: number; height?: number }[];
+          },
+        );
+      } catch {
+        resolve({});
+      }
+    });
+  });
+}

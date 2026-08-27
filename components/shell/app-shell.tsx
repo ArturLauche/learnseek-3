@@ -14,6 +14,7 @@ import { OrielMark } from "@/components/brand/oriel-mark";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NAV_ITEMS, activeNavFromPath } from "@/components/shell/nav";
 import { buttonVariants } from "@appica/ui-react/button";
+import { OfflineBanner } from "@/components/shell/offline-banner";
 
 const ICONS = {
   home: Home,
@@ -94,6 +95,7 @@ export function AppShell({
             <ThemeToggle />
           </header>
           <main id="main" className="flex-1 pb-24 md:pb-8">
+            <OfflineBanner />
             {children}
           </main>
         </div>

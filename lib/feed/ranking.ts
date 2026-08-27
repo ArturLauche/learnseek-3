@@ -174,3 +174,19 @@ export function shouldReplenish(currentSize: number) {
 export function replenishCount(currentSize: number) {
   return Math.max(0, TARGET_QUEUE_SIZE - currentSize);
 }
+
+/** Ranking factors shown to admins. Never include private model reasoning or user prompts. */
+export function publicRankingExplanation(breakdown: ScoreBreakdown): {
+  factor: string;
+  score: number;
+  why: string;
+}[] {
+  return [
+    { factor: "topic_match", score: breakdown.topic, why: "Matches explicit topic preferences." },
+    { factor: "knowledge_level", score: breakdown.level, why: "Difficulty relative to stated knowledge level." },
+    { factor: "format", score: breakdown.format, why: "Preferred item format." },
+    { factor: "source_quality", score: breakdown.quality, why: "Source quality plus completion and save signals." },
+    { factor: "freshness", score: breakdown.freshness, why: "Recency of publication." },
+    { factor: "exploration", score: breakdown.exploration, why: "Anti-echo-chamber exploration weight." },
+  ];
+}
