@@ -23,4 +23,5 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=builder /app ./
 EXPOSE 3000 3001
+# Same image serves app (`pnpm start`), worker, and sandbox. Full source is required for migrate/seed/tsx.
 CMD ["pnpm", "start"]

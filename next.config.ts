@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  // Full source is copied into the image (app, worker, sandbox, migrate/seed).
+  // `output: "standalone"` makes `next start` fail, which Compose uses as CMD.
   poweredByHeader: false,
   allowedDevOrigins: ["127.0.0.1", "localhost"],
   async headers() {

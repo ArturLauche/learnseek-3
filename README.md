@@ -123,7 +123,7 @@ Set `ADMIN_BOOTSTRAP_EMAIL` and `ADMIN_BOOTSTRAP_PASSWORD` (min 12 chars) before
 1. Provision Postgres (pgvector), Redis, S3-compatible storage.
 2. Set strong `AUTH_SECRET` and `ENCRYPTION_KEY`.
 3. Configure `APP_URL` / `APP_ORIGIN` and `SANDBOX_ORIGIN` as **different origins**. Production: distinct hostnames (`https://app.example.com` and `https://sandbox.example.com`). Local: `localhost` vs `127.0.0.1` is acceptable. Point TLS at both; see `deploy/Caddyfile.example` and `deploy/nginx.conf.example`. Run `pnpm sandbox` beside `pnpm start`.
-4. `docker compose up --build` or run `pnpm build && pnpm start` plus `pnpm worker` plus `pnpm sandbox`. Compose labels `oriel.role` / `oriel.origin` on `app` and `sandbox` for reverse-proxy wiring.
+4. `docker compose up --build` or run `pnpm build && pnpm start` plus `pnpm worker` plus `pnpm sandbox`. Compose `app` runs migrate, seed, then `pnpm start` (the image keeps full source for worker/sandbox/tsx — not Next standalone, which cannot use `next start`). Compose labels `oriel.role` / `oriel.origin` on `app` and `sandbox` for reverse-proxy wiring.
 5. Put TLS in front of app and sandbox.
 6. Optional: `--profile clamav` for virus scanning; point `SCANNER_MODE=clamav`.
 7. Optional OTLP endpoint for traces and metrics (`OTEL_EXPORTER_OTLP_ENDPOINT`).
