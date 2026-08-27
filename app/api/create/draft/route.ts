@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { contentItems } from "@/lib/db/schema";
 import { z } from "zod";
 import { slugify } from "@/lib/slug";
+import { enqueueTracked } from "@/lib/jobs";
 
 const draftSchema = z.object({
   title: z.string().min(4),
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Rights confirmation is required" }, { status: 400 });
   }
   const slug = `${slugify(parsed.data.title)}-${crypto.randomUUID().slice(0, 8)}`;
-  await db.insert(contentItems).values({
+  const [item] = await db.insert(contentItems).values({
     slug,
     title: parsed.data.title,
     learningObjective: parsed.data.objective,
@@ -37,6 +38,20 @@ export async function POST(request: NextRequest) {
     moderationState: "pending",
     visibility: "private",
     ownerUserId: session.user.id,
-  });
+  }).returning();
+  if (item) {
+    await enqueueTracked({
+      queue: "moderation",
+      kind: "draft",
+      userId: session.user.id,
+      contentItemId: item.id,
+      data: {
+        contentItemId: item.id,
+        text: `${item.title}\n${item.learningObjective}\n${item.bodyText}`,
+        safetyClass: "general",
+      },
+      dedupeKey: `mod-draft:${item.id}`,
+    });
+  }
   return NextResponse.json({ ok: true, slug });
 }

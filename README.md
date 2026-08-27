@@ -84,9 +84,17 @@ Migrations live in `drizzle/`. The first migration enables `vector` and creates 
 ## Testing
 
 ```bash
-pnpm test          # unit: ranking, moderation, sandbox, permissions
+pnpm test          # unit + integration (feed integration needs Postgres/Redis)
 pnpm test:e2e      # Playwright journeys (requires app + db)
 ```
+
+Workers: `pnpm worker` consumes BullMQ queues (`generation`, `media`, `moderation`, `transcription`, `embedding`, `notifications`, `scan`, `compile`, `feed-replenish`). Compile jobs spawn `worker/compile-child.mjs` with a 64MB heap and a timeout — untrusted JSX is never compiled in the Next.js process.
+
+If ClamAV is too heavy for a laptop, keep `SCANNER_MODE=stub` (still writes `scan_results`) and enable `--profile clamav` in production.
+
+## Admin account creation
+
+Set `ADMIN_BOOTSTRAP_EMAIL` and `ADMIN_BOOTSTRAP_PASSWORD` (min 12 chars) before `pnpm db:seed`. The seeder assigns `admin` and `superadmin` roles. Change the password after first login.
 
 ## Production deploy
 

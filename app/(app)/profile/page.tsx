@@ -49,6 +49,11 @@ export default async function ProfilePage() {
         <Link href="/settings" className={buttonVariants({ variant: "ghost" })}>
           Settings
         </Link>
+        {session.user.handle ? (
+          <Link href={`/u/${session.user.handle}`} className={buttonVariants({ variant: "ghost" })}>
+            Public profile
+          </Link>
+        ) : null}
       </div>
     </div>
   );

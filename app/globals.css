@@ -94,6 +94,15 @@ body {
   font-family: var(--font-serif);
 }
 
+.admin-mono {
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0.01em;
+}
+.admin-mono h1,
+.admin-mono h2 {
+  font-weight: 500;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

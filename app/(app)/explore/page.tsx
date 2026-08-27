@@ -56,12 +56,14 @@ export default async function ExplorePage() {
         <h2 className="mb-4 font-serif text-2xl">Learning paths</h2>
         <div className="grid gap-3 md:grid-cols-2">
           {paths.map((path) => (
-            <Card key={path.id} frame="solid">
-              <CardHeader>
-                <CardTitle className="font-serif text-xl font-normal">{path.title}</CardTitle>
-                <CardDescription>{path.description}</CardDescription>
-              </CardHeader>
-            </Card>
+            <Link key={path.id} href={`/paths/${path.slug}`}>
+              <Card frame="solid">
+                <CardHeader>
+                  <CardTitle className="font-serif text-xl font-normal">{path.title}</CardTitle>
+                  <CardDescription>{path.description}</CardDescription>
+                </CardHeader>
+              </Card>
+            </Link>
           ))}
         </div>
       </section>
@@ -71,7 +73,9 @@ export default async function ExplorePage() {
           {recent.map((item) => (
             <li key={item.id} className="flex items-center justify-between gap-4 border-b border-border-muted py-3">
               <div>
-                <p className="font-serif text-lg">{item.title}</p>
+                <Link href={`/learn/${item.slug}`} className="font-serif text-lg underline">
+                  {item.title}
+                </Link>
                 <p className="text-sm text-foreground-muted">{item.learningObjective}</p>
               </div>
               <Badge variant="outline">{item.format.replaceAll("_", " ")}</Badge>

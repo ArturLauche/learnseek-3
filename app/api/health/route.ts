@@ -26,6 +26,14 @@ export async function GET() {
   }
 
   try {
+    const { getQueue } = await import("@/lib/queue");
+    const counts = await getQueue("feed-replenish").getJobCounts("waiting", "active", "failed");
+    checks.queue = { ok: true, detail: `waiting:${counts.waiting} active:${counts.active} failed:${counts.failed}` };
+  } catch {
+    checks.queue = { ok: false };
+  }
+
+  try {
     const env = getEnv();
     await getStorage().send(new HeadBucketCommand({ Bucket: env.STORAGE_BUCKET }));
     checks.storage = { ok: true };

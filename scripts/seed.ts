@@ -23,6 +23,10 @@ import {
   topics,
   user,
   userRoles,
+  quizzes,
+  quizQuestions,
+  generatedArtifacts,
+  policyConfigs,
 } from "@/lib/db/schema";
 import { ROLE_PERMISSIONS } from "@/lib/auth/permissions";
 import { SEED_ITEMS, SEED_TOPICS } from "@/lib/seed/catalog";
@@ -216,6 +220,80 @@ async function main() {
       await db.insert(pathItems).values({ sectionId: section.id, contentItemId: bayes[0].id, position: 1 });
     }
   }
+
+  const [bayesItem] = await db.select().from(contentItems).where(eq(contentItems.slug, "bayes-clinic-door")).limit(1);
+  if (bayesItem) {
+    const [quizExisting] = await db.select().from(quizzes).where(eq(quizzes.contentItemId, bayesItem.id)).limit(1);
+    if (!quizExisting) {
+      const [quiz] = await db
+        .insert(quizzes)
+        .values({ contentItemId: bayesItem.id, title: "Base rates at the clinic door" })
+        .returning();
+      if (quiz) {
+        await db.insert(quizQuestions).values({
+          quizId: quiz.id,
+          prompt: "A test is 90% sensitive for a rare condition (1 in 100). A positive result most nearly means:",
+          choices: [
+            "The person almost certainly has the condition",
+            "Most positives can still be false when the base rate is low",
+            "The test is useless",
+            "Prevalence no longer matters",
+          ],
+          correctIndex: 1,
+          explanation: "False positives pile up when the condition is rare, even with a 'good' test.",
+          position: 0,
+        });
+      }
+    }
+  }
+
+  try {
+    const { ensureBucket, putObject } = await import("@/lib/storage");
+    const { renderSceneHtml } = await import("@/lib/sandbox/schema-html");
+    const { sha256 } = await import("@/lib/hash");
+    await ensureBucket();
+    const [demo] = await db.select().from(contentItems).where(eq(contentItems.slug, "stack-vs-queue")).limit(1);
+    if (demo) {
+      const [existingArtifact] = await db
+        .select()
+        .from(generatedArtifacts)
+        .where(eq(generatedArtifacts.contentItemId, demo.id))
+        .limit(1);
+      if (!existingArtifact) {
+        const html = renderSceneHtml(
+          {
+            type: "comparison",
+            left: "A stack is last-in, first-out: plates.",
+            right: "A queue is first-in, first-out: a line at a window.",
+          },
+          "Stack versus queue",
+        );
+        const key = `artifacts/seed-${demo.id}.html`;
+        await putObject({ key, body: html, contentType: "text/html; charset=utf-8" });
+        await db.insert(generatedArtifacts).values({
+          contentItemId: demo.id,
+          originalCode: html,
+          compiledObjectKey: key,
+          compiledHash: sha256(html),
+          compileState: "compiled",
+          validation: { seed: true },
+          modelId: "editorial",
+          source: "seed",
+        });
+      }
+    }
+  } catch (error) {
+    logger.warn({ err: error }, "seed artifact storage skipped");
+  }
+
+  await db
+    .insert(policyConfigs)
+    .values({
+      slug: "community-v1",
+      version: "1",
+      body: { comments: false, sensitiveSourcesRequired: true },
+    })
+    .onConflictDoNothing();
 
   const adminEmail = process.env.ADMIN_BOOTSTRAP_EMAIL;
   const adminPassword = process.env.ADMIN_BOOTSTRAP_PASSWORD;

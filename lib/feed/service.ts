@@ -2,15 +2,20 @@ import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   contentItems,
+  contentItemSources,
   feedImpressions,
   feedQueueItems,
   feedQueues,
+  quizzes,
+  quizQuestions,
+  sources,
   topics,
   userTopicPreferences,
   preferences,
 } from "@/lib/db/schema";
 import { enqueue } from "@/lib/queue";
 import { getRedis } from "@/lib/redis";
+import { itemSignals } from "./signals";
 import {
   applyDiversity,
   isEligible,
@@ -112,6 +117,7 @@ export async function replenishFeedQueue(params: {
     )
     .limit(200);
 
+  const signals = await itemSignals(rows.map((row) => row.id));
   const eligible: { item: CandidateItem; total: number; factors: Record<string, number | string> }[] =
     [];
   for (const row of rows) {
@@ -136,10 +142,11 @@ export async function replenishFeedQueue(params: {
     };
     const eligibility = isEligible(item, prefs, { recentlySeenIds });
     if (!eligibility.ok) continue;
+    const signal = signals.get(row.id) ?? { skipRate: 0, completionRate: 0, saveBoost: 0 };
     const breakdown = scoreCandidate(item, prefs, {
-      skipRate: 0,
-      completionRate: 0,
-      saveBoost: 0,
+      skipRate: signal.skipRate,
+      completionRate: signal.completionRate,
+      saveBoost: signal.saveBoost,
       followBoost: 0,
     });
     eligible.push({
@@ -227,6 +234,55 @@ export async function serveFeed(params: { userId: string | null; anonymousKey: s
           .from(contentItems)
           .where(inArray(contentItems.id, itemIds));
   const byId = new Map(items.map((item) => [item.id, item]));
+  const sourceRows =
+    itemIds.length === 0
+      ? []
+      : await db
+          .select({
+            contentItemId: contentItemSources.contentItemId,
+            title: sources.title,
+            url: sources.canonicalUrl,
+            citation: contentItemSources.citation,
+          })
+          .from(contentItemSources)
+          .innerJoin(sources, eq(contentItemSources.sourceId, sources.id))
+          .where(inArray(contentItemSources.contentItemId, itemIds));
+  const sourcesByItem = new Map<string, { title: string; url: string | null; citation: string | null }[]>();
+  for (const row of sourceRows) {
+    const list = sourcesByItem.get(row.contentItemId) ?? [];
+    list.push({ title: row.title, url: row.url, citation: row.citation });
+    sourcesByItem.set(row.contentItemId, list);
+  }
+  const quizRows =
+    itemIds.length === 0
+      ? []
+      : await db.select().from(quizzes).where(inArray(quizzes.contentItemId, itemIds));
+  const questionRows =
+    quizRows.length === 0
+      ? []
+      : await db
+          .select()
+          .from(quizQuestions)
+          .where(
+            inArray(
+              quizQuestions.quizId,
+              quizRows.map((row) => row.id),
+            ),
+          );
+  const quizByItem = new Map<
+    string,
+    { id: string; title: string; questions: { id: string; prompt: string; choices: string[] }[] }
+  >();
+  for (const quiz of quizRows) {
+    if (!quiz.contentItemId) continue;
+    quizByItem.set(quiz.contentItemId, {
+      id: quiz.id,
+      title: quiz.title,
+      questions: questionRows
+        .filter((q) => q.quizId === quiz.id)
+        .map((q) => ({ id: q.id, prompt: q.prompt, choices: q.choices })),
+    });
+  }
   const payload = pending
     .map((row) => {
       const item = byId.get(row.contentItemId);
@@ -248,6 +304,8 @@ export async function serveFeed(params: { userId: string | null; anonymousKey: s
           safetyClass: item.safetyClass,
           creatorId: item.creatorId,
           primaryTopicId: item.primaryTopicId,
+          sources: sourcesByItem.get(item.id) ?? [],
+          quiz: quizByItem.get(item.id) ?? null,
         },
       };
     })

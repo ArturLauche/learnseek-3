@@ -3,6 +3,7 @@ import { logger } from "@/lib/logger";
 import { db } from "@/lib/db";
 import { providerRequests } from "@/lib/db/schema";
 import { learningItemSchema, moderationResultSchema, type LearningItemDraft, type ModerationResult } from "./schemas";
+import { stripSensitive } from "@/lib/pii";
 
 type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
@@ -213,7 +214,7 @@ export async function generateLearningItem(input: {
       },
       {
         role: "user",
-        content: JSON.stringify(input),
+        content: stripSensitive(JSON.stringify(input)),
       },
     ],
   });
@@ -235,7 +236,7 @@ export async function moderateText(text: string): Promise<ModerationResult> {
           content:
             "Classify content for safety. Categories: harassment, hate, sexual, violence, self-harm, dangerous, illegal, spam, scam, impersonation, privacy, pii, malware, credentials, manipulated_media, misinformation, plagiarism, copyright. Return JSON.",
         },
-        { role: "user", content: text.slice(0, 8000) },
+        { role: "user", content: stripSensitive(text.slice(0, 8000)) },
       ],
     });
     return moderationResultSchema.parse(JSON.parse(raw));
@@ -246,16 +247,24 @@ export async function moderateText(text: string): Promise<ModerationResult> {
 
 export function heuristicModeration(text: string): ModerationResult {
   const lowered = text.toLowerCase();
-  const flagged =
-    /\b(kill yourself|credit card\s*\d{12}|api[_-]?key\s*[:=])\b/.test(lowered) ||
-    /\bAKIA[0-9A-Z]{16}\b/.test(text);
-  if (flagged) {
-    return {
-      outcome: "auto_reject",
-      categories: [{ category: "credentials", confidence: 0.9 }],
-      priority: 0.9,
-      notes: "heuristic",
-    };
+  const hits: { category: string; confidence: number }[] = [];
+  if (/\b(kill yourself|suicide methods)\b/.test(lowered)) {
+    hits.push({ category: "self_harm", confidence: 0.92 });
+  }
+  if (/\b(credit card\s*\d{12}|api[_-]?key\s*[:=])\b/.test(lowered) || /\bAKIA[0-9A-Z]{16}\b/.test(text)) {
+    hits.push({ category: "exposed_credentials", confidence: 0.93 });
+  }
+  if (/\b(how to make a bomb|buy stolen cards)\b/.test(lowered)) {
+    hits.push({ category: "illegal_activity", confidence: 0.9 });
+  }
+  if (/\b(click here to claim prize|crypto giveaway guaranteed)\b/.test(lowered)) {
+    hits.push({ category: "scams", confidence: 0.7 });
+  }
+  if (hits.some((h) => h.confidence >= 0.85)) {
+    return { outcome: "auto_reject", categories: hits, priority: 0.9, notes: "heuristic" };
+  }
+  if (hits.length > 0) {
+    return { outcome: "hold", categories: hits, priority: 0.6, notes: "heuristic" };
   }
   return {
     outcome: "auto_approve",

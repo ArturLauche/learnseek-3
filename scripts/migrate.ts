@@ -16,6 +16,7 @@ async function main() {
   try {
     await sql`CREATE EXTENSION IF NOT EXISTS vector`;
     await sql`CREATE EXTENSION IF NOT EXISTS pgcrypto`;
+    await sql`CREATE EXTENSION IF NOT EXISTS pg_trgm`;
   } catch (error) {
     console.warn("Could not create extensions as this role (they must already exist):", error);
   }

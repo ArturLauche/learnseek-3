@@ -7,6 +7,8 @@ import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@appic
 import { Alert } from "@appica/ui-react/alert";
 import { Spinner } from "@appica/ui-react/spinner";
 import { Bookmark, EyeOff, Flag, Share, Sparkles } from "@appica/icons-react";
+import Link from "next/link";
+import { QuizForm } from "@/components/learn/quiz-form";
 
 type FeedItem = {
   queueItemId: string;
@@ -23,6 +25,8 @@ type FeedItem = {
     difficulty: string;
     origin: string;
     safetyClass: string;
+    sources?: { title: string; url: string | null; citation: string | null }[];
+    quiz?: { id: string; title: string; questions: { id: string; prompt: string; choices: string[] }[] } | null;
   };
 };
 
@@ -41,7 +45,9 @@ export function FeedViewer() {
         ? "/api/saves"
         : kind === "report"
           ? "/api/reports"
-          : "/api/feed/interact";
+          : kind === "react"
+            ? "/api/reactions"
+            : "/api/feed/interact";
     const res = await fetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -59,15 +65,19 @@ export function FeedViewer() {
     if (kind === "hide") {
       setNotice("We will show fewer items like this.");
       setItems((current) => current.filter((_, i) => i !== index));
+      setIndex((i) => Math.max(0, Math.min(i, items.length - 2)));
     }
     if (kind === "report") setNotice("Report recorded for moderation.");
     if (kind === "share") {
       await navigator.clipboard.writeText(`${window.location.origin}/share/${items[index].item.slug}`);
       setNotice("Share link copied. Source links stay with the public page.");
     }
-    if (kind === "explain_deeper" || kind === "simplify" || kind === "show_example") {
-      setNotice("Logged. When an AI provider is configured, a follow-up item is queued; until then the feed stays on prepared content.");
+    if (kind === "explain_deeper" || kind === "simplify" || kind === "show_example" || kind === "follow_up") {
+      setNotice(
+        "Logged. When an AI provider is configured, a follow-up item is queued; until then the feed stays on prepared content.",
+      );
     }
+    if (kind === "react") setNotice("Reaction saved.");
   }
 
   useEffect(() => {
@@ -157,10 +167,27 @@ export function FeedViewer() {
             </p>
           ))}
         </div>
+        {current.item.quiz ? (
+          <QuizForm quizId={current.item.quiz.id} questions={current.item.quiz.questions} />
+        ) : null}
+        {current.item.sources && current.item.sources.length > 0 ? (
+          <ul className="mt-4 text-sm text-foreground-muted">
+            {current.item.sources.map((source) => (
+              <li key={source.title}>
+                <a className="underline" href={source.url ?? undefined} rel="noreferrer">
+                  {source.title}
+                </a>
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <CardFooter className="mt-6 flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={() => void interact("save")}>
             <Bookmark data-icon="start" />
             Save
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => void interact("react", { kind: "useful" })}>
+            Useful
           </Button>
           <Button variant="ghost" size="sm" onClick={() => void interact("explain_deeper")}>
             <Sparkles data-icon="start" />
@@ -171,6 +198,9 @@ export function FeedViewer() {
           </Button>
           <Button variant="ghost" size="sm" onClick={() => void interact("show_example")}>
             Show example
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => void interact("follow_up")}>
+            Follow-up
           </Button>
           <Button variant="ghost" size="sm" onClick={() => void interact("share")}>
             <Share data-icon="start" />
@@ -184,6 +214,9 @@ export function FeedViewer() {
             <Flag data-icon="start" />
             Report
           </Button>
+          <Link href={`/learn/${current.item.slug}`} className="text-sm underline">
+            Open full item
+          </Link>
         </CardFooter>
       </Card>
       <div className="mt-4 flex justify-between">
@@ -202,6 +235,7 @@ export function FeedViewer() {
                   queueItemId: currentItem.queueItemId,
                 }),
               });
+              void interact("complete", { value: currentItem.item.durationSeconds });
             }
             setIndex((i) => Math.min(items.length - 1, i + 1));
           }}
