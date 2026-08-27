@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { directionForLanguages } from "@/lib/i18n/dir";
 import { preferStructuredScene } from "@/lib/sandbox/scene-policy";
 import { SANDBOX_CSP } from "@/lib/sandbox/document";
+import { frameAncestorsHeader } from "@/lib/sandbox/origins";
 
 describe("direction", () => {
   it("uses rtl for arabic and hebrew", () => {
@@ -30,10 +31,11 @@ describe("structured scenes", () => {
 
 describe("sandbox CSP", () => {
   it("does not allow connect or same-origin weakening", () => {
-    const csp = SANDBOX_CSP("http://localhost:3000");
+    const csp = SANDBOX_CSP(frameAncestorsHeader("https://app.example.com"));
     expect(csp).toContain("connect-src 'none'");
     expect(csp).toContain("script-src 'self'");
-    expect(csp).toContain("frame-ancestors http://localhost:3000");
+    expect(csp).toContain("frame-ancestors https://app.example.com");
     expect(csp).not.toContain("allow-same-origin");
+    expect(csp).not.toContain("localhost");
   });
 });

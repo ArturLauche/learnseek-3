@@ -1,0 +1,21 @@
+# Production: terminate TLS and route two distinct hostnames.
+# APP_URL=https://app.example.com
+# APP_ORIGIN=https://app.example.com
+# SANDBOX_ORIGIN=https://sandbox.example.com
+#
+# The sandbox origin MUST differ from the app origin (hostname, not only a port).
+# CSP frame-ancestors and postMessage parent checks use APP_URL / APP_ORIGIN.
+
+app.example.com {
+	encode gzip
+	reverse_proxy app:3000
+}
+
+sandbox.example.com {
+	encode gzip
+	reverse_proxy sandbox:3001
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+	}
+}

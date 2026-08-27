@@ -37,6 +37,21 @@ export function FeedViewer() {
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
 
+  async function loadFeed() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/feed");
+      if (!res.ok) throw new Error("Feed unavailable");
+      const data = (await res.json()) as { items: FeedItem[] };
+      setItems(data.items);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Feed unavailable");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function interact(kind: string, extra?: Record<string, unknown>) {
     if (!items[index]) return;
     const contentItemId = items[index].item.id;
@@ -48,17 +63,22 @@ export function FeedViewer() {
           : kind === "react"
             ? "/api/reactions"
             : "/api/feed/interact";
-    const res = await fetch(path, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contentItemId, kind, ...extra }),
-    });
-    if (res.status === 401) {
-      setNotice("Sign in to keep this across devices.");
-      return;
-    }
-    if (!res.ok) {
-      setNotice("That action did not save. Try again.");
+    try {
+      const res = await fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contentItemId, kind, ...extra }),
+      });
+      if (res.status === 401) {
+        setNotice("Sign in to keep this across devices.");
+        return;
+      }
+      if (!res.ok) {
+        setNotice("That action did not save. Try again.");
+        return;
+      }
+    } catch {
+      setNotice("That action did not save. Reconnect and retry.");
       return;
     }
     if (kind === "save") setNotice("Saved to your library.");
@@ -81,24 +101,7 @@ export function FeedViewer() {
   }
 
   useEffect(() => {
-    let cancelled = false;
-    fetch("/api/feed")
-      .then(async (res) => {
-        if (!res.ok) throw new Error("Feed unavailable");
-        return res.json() as Promise<{ items: FeedItem[] }>;
-      })
-      .then((data) => {
-        if (!cancelled) setItems(data.items);
-      })
-      .catch((err: Error) => {
-        if (!cancelled) setError(err.message);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+    void loadFeed();
   }, []);
 
   useEffect(() => {
@@ -124,6 +127,9 @@ export function FeedViewer() {
         <Alert variant="error">
           {error}. Cached editorial items should appear after seed. Retry after checking Postgres, Redis, and MinIO.
         </Alert>
+        <Button className="mt-4" variant="outline" onClick={() => void loadFeed()}>
+          Retry feed
+        </Button>
       </div>
     );
   }

@@ -6,8 +6,8 @@ config({ path: ".env" });
 import { Worker } from "bullmq";
 import { getRedis } from "@/lib/redis";
 import { logger } from "@/lib/logger";
-import { QUEUE_NAMES } from "@/lib/queue";
 import { handleJob, markJob } from "./handlers";
+import { getQueue, QUEUE_NAMES } from "@/lib/queue";
 
 for (const name of QUEUE_NAMES) {
   const worker = new Worker(
@@ -38,3 +38,18 @@ for (const name of QUEUE_NAMES) {
 }
 
 logger.info({ queues: QUEUE_NAMES }, "oriel worker started");
+
+async function scheduleRetention() {
+  try {
+    const queue = getQueue("retention");
+    await queue.upsertJobScheduler(
+      "retention-daily",
+      { pattern: "0 3 * * *" },
+      { name: "purge", data: { dryRun: false, scheduled: true } },
+    );
+  } catch (error) {
+    logger.warn({ err: error }, "retention scheduler not installed");
+  }
+}
+
+void scheduleRetention();

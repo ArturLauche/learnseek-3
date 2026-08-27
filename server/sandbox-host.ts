@@ -12,38 +12,10 @@ import { generatedArtifacts } from "@/lib/db/schema";
 import { getObjectText } from "@/lib/storage-read";
 import { getEnv } from "@/lib/env";
 import { SANDBOX_CSP, wrapSandboxDocument } from "@/lib/sandbox/document";
+import { allowedParentOrigin, frameAncestorsHeader } from "@/lib/sandbox/origins";
 import { logger } from "@/lib/logger";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function ancestorList(appUrl: string) {
-  const origins = new Set<string>([appUrl]);
-  try {
-    const url = new URL(appUrl);
-    if (url.hostname === "localhost") {
-      origins.add(`${url.protocol}//127.0.0.1${url.port ? `:${url.port}` : ""}`);
-    }
-    if (url.hostname === "127.0.0.1") {
-      origins.add(`${url.protocol}//localhost${url.port ? `:${url.port}` : ""}`);
-    }
-  } catch {
-    origins.add("http://localhost:3000");
-    origins.add("http://127.0.0.1:3000");
-  }
-  return [...origins].join(" ");
-}
-
-function allowedParent(candidate: string | null, appUrl: string): string {
-  if (!candidate) return "";
-  const allowed = new Set(ancestorList(appUrl).split(" "));
-  try {
-    const url = new URL(candidate);
-    const origin = url.origin;
-    return allowed.has(origin) ? origin : "";
-  } catch {
-    return "";
-  }
-}
 
 function send(res: http.ServerResponse, status: number, body: string, headers: Record<string, string>) {
   res.writeHead(status, headers);
@@ -65,7 +37,8 @@ async function main() {
   const env = getEnv();
   const port = Number(process.env.SANDBOX_PORT ?? 3001);
   const appUrl = env.APP_URL;
-  const csp = SANDBOX_CSP(ancestorList(appUrl));
+  const extra = env.APP_ORIGIN ? [env.APP_ORIGIN] : [];
+  const csp = SANDBOX_CSP(frameAncestorsHeader(appUrl, extra));
   const runtimePath = path.join(process.cwd(), "public/sandbox-runtime.js");
   const cssPath = path.join(process.cwd(), "public/sandbox.css");
 
@@ -129,7 +102,7 @@ async function main() {
         return;
       }
       const body = await getObjectText(artifact.compiledObjectKey);
-      const parent = allowedParent(url.searchParams.get("parent"), appUrl);
+      const parent = allowedParentOrigin(url.searchParams.get("parent"), appUrl, extra);
       const html = wrapSandboxDocument({ body, parentOrigin: parent });
       send(res, 200, html, {
         ...securityHeaders(csp),
@@ -142,7 +115,7 @@ async function main() {
   });
 
   server.listen(port, "0.0.0.0", () => {
-    logger.info({ port, appUrl }, "oriel sandbox host listening");
+    logger.info({ port, appUrl, sandboxOrigin: env.SANDBOX_ORIGIN }, "oriel sandbox host listening");
   });
 }
 

@@ -1,9 +1,15 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db, client } from "@/lib/db";
-import { contentItems, embeddings, searches, topics } from "@/lib/db/schema";
+import { contentItems, searches, topics } from "@/lib/db/schema";
 import { isPubliclyVisible } from "@/lib/content/visibility";
 import { embedTexts } from "@/lib/ai/provider";
 import { isAiConfigured } from "@/lib/env";
+import {
+  nearestByEmbedding,
+  reciprocalRankFusion,
+  searchCapability,
+  type SearchCapability,
+} from "./hybrid";
 
 export type SearchFilters = {
   q: string;
@@ -12,10 +18,13 @@ export type SearchFilters = {
   difficulty?: string;
   language?: string;
   userId?: string | null;
+  /** Test/fixture query vector. Production uses embedTexts when AI is configured. */
+  queryEmbedding?: number[];
 };
 
 export async function searchContent(filters: SearchFilters) {
   const q = filters.q.trim();
+  const capability = await searchCapability();
   let topicId: string | undefined;
   if (filters.topic) {
     const [topic] = await db.select().from(topics).where(eq(topics.slug, filters.topic)).limit(1);
@@ -55,17 +64,29 @@ export async function searchContent(filters: SearchFilters) {
       .limit(40);
   }
 
-  const semanticIds = q && isAiConfigured() ? await semanticIdsFor(q) : [];
-  if (semanticIds.length > 0) {
-    const missing = semanticIds.filter((id) => !rows.some((row) => row.id === id));
+  let knnIds: string[] = [];
+  let usedHybrid = false;
+  const queryVector = filters.queryEmbedding ?? (q && isAiConfigured() ? await embedQuery(q) : null);
+  if (queryVector && capability.embeddingsStored) {
+    try {
+      const neighbors = await nearestByEmbedding(queryVector, 12);
+      knnIds = neighbors.filter((row) => row.distance < 0.55).map((row) => row.contentItemId);
+      usedHybrid = knnIds.length > 0;
+    } catch {
+      knnIds = [];
+    }
+  }
+
+  if (usedHybrid) {
+    const ftsIds = rows.map((row) => row.id);
+    const mergedIds = reciprocalRankFusion(ftsIds, knnIds);
+    const missing = mergedIds.filter((id) => !rows.some((row) => row.id === id));
     if (missing.length) {
       const extra = await db.select().from(contentItems).where(inArray(contentItems.id, missing));
-      rows = [...extra, ...rows];
+      rows = [...rows, ...extra];
     }
-    rows.sort((a, b) => semanticIds.indexOf(a.id) - semanticIds.indexOf(b.id) || 0);
-    const unmatched = rows.filter((row) => !semanticIds.includes(row.id));
-    const matched = semanticIds.map((id) => rows.find((row) => row.id === id)).filter(Boolean) as Row[];
-    rows = [...matched, ...unmatched].slice(0, 40);
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    rows = mergedIds.map((id) => byId.get(id)).filter(Boolean) as Row[];
   }
 
   const visible = rows.filter((row) =>
@@ -77,6 +98,11 @@ export async function searchContent(filters: SearchFilters) {
     }),
   );
 
+  const effective: SearchCapability = {
+    ...capability,
+    mode: usedHybrid ? "hybrid" : capability.mode,
+  };
+
   await db.insert(searches).values({
     userId: filters.userId,
     query: q,
@@ -85,30 +111,20 @@ export async function searchContent(filters: SearchFilters) {
       format: filters.format,
       difficulty: filters.difficulty,
       language: filters.language,
-      semantic: semanticIds.length > 0,
+      semantic: usedHybrid,
+      mode: effective.mode,
     },
     resultCount: visible.length,
   });
 
-  return visible;
+  return { items: visible, capability: effective };
 }
 
-async function semanticIdsFor(q: string): Promise<string[]> {
+async function embedQuery(q: string): Promise<number[] | null> {
   try {
     const vectors = await embedTexts([q.slice(0, 2000)]);
-    const vector = vectors?.[0];
-    if (!vector) return [];
-    const vectorLiteral = `[${vector.join(",")}]`;
-    const rows = await db
-      .select({
-        contentItemId: embeddings.contentItemId,
-        distance: sql<number>`${embeddings.embedding} <=> ${sql.raw(`'${vectorLiteral}'::vector`)}`,
-      })
-      .from(embeddings)
-      .orderBy(sql`${embeddings.embedding} <=> ${sql.raw(`'${vectorLiteral}'::vector`)}`)
-      .limit(12);
-    return rows.filter((row) => Number(row.distance) < 0.55).map((row) => row.contentItemId);
+    return vectors?.[0] ?? null;
   } catch {
-    return [];
+    return null;
   }
 }

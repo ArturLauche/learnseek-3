@@ -1,0 +1,38 @@
+# Production: terminate TLS and route two distinct hostnames.
+# APP_URL=https://app.example.com
+# APP_ORIGIN=https://app.example.com
+# SANDBOX_ORIGIN=https://sandbox.example.com
+#
+# The sandbox origin MUST differ from the app origin (hostname, not only a port).
+# CSP frame-ancestors and postMessage parent checks use APP_URL / APP_ORIGIN.
+
+server {
+    listen 443 ssl http2;
+    server_name app.example.com;
+    ssl_certificate     /etc/ssl/certs/app.example.com.pem;
+    ssl_certificate_key /etc/ssl/private/app.example.com.key;
+
+    location / {
+        proxy_pass http://app:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    server_name sandbox.example.com;
+    ssl_certificate     /etc/ssl/certs/sandbox.example.com.pem;
+    ssl_certificate_key /etc/ssl/private/sandbox.example.com.key;
+
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy no-referrer always;
+
+    location / {
+        proxy_pass http://sandbox:3001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

@@ -5,8 +5,9 @@
     try {
       const params = new URLSearchParams(window.location.search);
       const raw = params.get("parent") ?? "";
+      if (!raw) return "";
       const origin = new URL(raw).origin;
-      if (origin === "null" || origin === "file://") return "";
+      if (origin === "null" || origin === "file:") return "";
       if (origin.startsWith("http://") || origin.startsWith("https://")) return origin;
       return "";
     } catch {

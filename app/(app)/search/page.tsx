@@ -2,6 +2,7 @@ import { Input } from "@appica/ui-react/input";
 import { Search } from "@appica/icons-react";
 import { Badge } from "@appica/ui-react/badge";
 import { searchContent } from "@/lib/search/service";
+import { searchCapability } from "@/lib/search/hybrid";
 import { getCurrentSession } from "@/lib/auth/permissions";
 import Link from "next/link";
 
@@ -13,9 +14,9 @@ export default async function SearchPage({
   const params = await searchParams;
   const q = params.q?.trim() ?? "";
   const session = await getCurrentSession();
-  const rows =
+  const result =
     q.length === 0 && !params.topic
-      ? []
+      ? { items: [], capability: await searchCapability() }
       : await searchContent({
           q,
           topic: params.topic,
@@ -24,10 +25,20 @@ export default async function SearchPage({
           language: params.language,
           userId: session?.user.id,
         });
+  const rows = result.items;
+  const capability = result.capability;
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <h1 className="font-serif text-4xl">Search</h1>
+      <p className="mt-2 text-sm text-foreground-muted">
+        Full-text search always runs.
+        {capability.mode === "hybrid"
+          ? " Semantic kNN is merged with FTS for this query."
+          : capability.mode === "fts_vectors_idle"
+            ? " Embeddings are stored, but no query-embedding provider is configured — results are FTS only."
+            : " Semantic search is idle until embeddings exist and a provider can embed the query."}
+      </p>
       <form className="mt-6 space-y-3">
         <Input
           name="q"
@@ -66,7 +77,7 @@ export default async function SearchPage({
       </form>
       <ul className="mt-8 space-y-4">
         {q.length === 0 && !params.topic ? (
-          <li className="text-foreground-muted">Type a query to search titles, objectives, and passages. Semantic matches merge in when embeddings are configured.</li>
+          <li className="text-foreground-muted">Type a query to search titles, objectives, and passages.</li>
         ) : rows.length === 0 ? (
           <li className="text-foreground-muted">No published items matched. Try fewer words or a different topic.</li>
         ) : null}

@@ -64,4 +64,6 @@ test("admin can sign in, suspend a user, and decide a moderation case", async ({
   expect(health.ok()).toBeTruthy();
   const json = (await health.json()) as { checks: Record<string, { ok: boolean }> };
   expect(json.checks.database?.ok).toBe(true);
+  expect(json.checks.origins?.ok).toBe(true);
+  expect(json.checks.semanticSearch?.ok).toBe(true);
 });

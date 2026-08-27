@@ -131,3 +131,20 @@ export const importExportJobs = pgTable("import_export_jobs", {
   createdAt,
   completedAt: timestamptz("completed_at"),
 });
+
+export const retentionRuns = pgTable(
+  "retention_runs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    dryRun: boolean("dry_run").notNull().default(true),
+    status: text("status").notNull().default("queued"),
+    startedAt: timestamptz("started_at").notNull().defaultNow(),
+    finishedAt: timestamptz("finished_at"),
+    counts: jsonb("counts").$type<Record<string, number>>().notNull().default({}),
+    policySnapshot: jsonb("policy_snapshot").$type<Record<string, unknown>>().notNull().default({}),
+    errorSafe: text("error_safe"),
+    actorUserId: text("actor_user_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt,
+  },
+  (table) => [index("retention_runs_started_idx").on(table.startedAt)],
+);

@@ -71,8 +71,15 @@ services:
       DATABASE_URL: postgres://oriel:oriel_dev_password@postgres:5432/oriel
       REDIS_URL: redis://redis:6379
       STORAGE_ENDPOINT: http://minio:9000
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3000}
+      SANDBOX_ORIGIN: ${SANDBOX_ORIGIN:-http://127.0.0.1:3001}
+      NEXT_PUBLIC_SANDBOX_ORIGIN: ${NEXT_PUBLIC_SANDBOX_ORIGIN:-http://127.0.0.1:3001}
     ports:
       - "3000:3000"
+    labels:
+      oriel.role: app
+      oriel.origin: ${APP_URL:-http://localhost:3000}
     command: ["sh", "-c", "pnpm db:migrate && pnpm db:seed && pnpm start"]
 
   worker:
@@ -90,8 +97,12 @@ services:
       DATABASE_URL: postgres://oriel:oriel_dev_password@postgres:5432/oriel
       REDIS_URL: redis://redis:6379
       STORAGE_ENDPOINT: http://minio:9000
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      SANDBOX_ORIGIN: ${SANDBOX_ORIGIN:-http://127.0.0.1:3001}
     command: ["pnpm", "worker"]
 
+  # Production: SANDBOX_ORIGIN must be a distinct hostname (e.g. https://sandbox.example.com),
+  # not only a different port. Reverse proxy examples: deploy/Caddyfile.example, deploy/nginx.conf.example.
   sandbox:
     build:
       context: .
@@ -106,9 +117,14 @@ services:
       REDIS_URL: redis://redis:6379
       STORAGE_ENDPOINT: http://minio:9000
       SANDBOX_PORT: "3001"
-      APP_URL: http://localhost:3000
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3000}
+      SANDBOX_ORIGIN: ${SANDBOX_ORIGIN:-http://127.0.0.1:3001}
     ports:
       - "3001:3001"
+    labels:
+      oriel.role: sandbox
+      oriel.origin: ${SANDBOX_ORIGIN:-http://127.0.0.1:3001}
     command: ["pnpm", "sandbox"]
 
 volumes:

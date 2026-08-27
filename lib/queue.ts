@@ -11,9 +11,32 @@ export const QUEUE_NAMES = [
   "scan",
   "compile",
   "feed-replenish",
+  "retention",
 ] as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[number];
+
+export function isQueueName(value: string): value is QueueName {
+  return (QUEUE_NAMES as readonly string[]).includes(value);
+}
+
+export async function retryFailedQueueJobs(name: QueueName): Promise<{ retried: number }> {
+  const queue = getQueue(name);
+  const failed = await queue.getFailed(0, 50);
+  let retried = 0;
+  for (const job of failed) {
+    try {
+      await job.retry();
+      retried += 1;
+    } catch {
+      await enqueue(name, job.name, (job.data ?? {}) as Record<string, unknown>, {
+        jobId: `retry-${String(job.id ?? "job")}-${Date.now()}`.slice(0, 128),
+      });
+      retried += 1;
+    }
+  }
+  return { retried };
+}
 
 const queues = new Map<QueueName, Queue>();
 

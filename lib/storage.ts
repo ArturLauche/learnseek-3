@@ -1,5 +1,6 @@
 import {
   CreateBucketCommand,
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
   PutObjectCommand,
@@ -50,6 +51,11 @@ export async function putObject(params: {
     }),
   );
   return { bucket: env.STORAGE_BUCKET, key: params.key };
+}
+
+export async function deleteObject(key: string) {
+  const env = getEnv();
+  await getStorage().send(new DeleteObjectCommand({ Bucket: env.STORAGE_BUCKET, Key: key }));
 }
 
 export async function signedGetUrl(key: string, expiresIn = 3600) {

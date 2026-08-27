@@ -13,6 +13,7 @@ import { storeEmbedding } from "@/lib/ai/dedup";
 import { logger } from "@/lib/logger";
 import { deliverNotification } from "@/lib/notify/deliver";
 import { startSpan, recordMetric } from "@/lib/otel";
+import { runRetentionPurge } from "@/lib/privacy/purge";
 
 export async function handleJob(queueName: string, jobName: string, data: Record<string, unknown>) {
   const span = startSpan("job.handle", { queue: queueName, name: jobName });
@@ -94,7 +95,12 @@ async function handleJobInner(queueName: string, jobName: string, data: Record<s
     return { ok: false, reason: "missing_notification" };
   }
 
-  logger.info({ queueName, jobName }, "job received with no specialized handler");
+  if (queueName === "retention") {
+    return runRetentionPurge({
+      dryRun: data.dryRun === true,
+      actorUserId: typeof data.actorUserId === "string" ? data.actorUserId : null,
+    });
+  }
   return { ok: true };
 }
 

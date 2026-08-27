@@ -24,6 +24,17 @@ test("sandbox origin is distinct and iframe cannot access parent", async ({ page
   expect(src).toContain(new URL(sandboxOrigin).host);
   expect(src).not.toContain(":3000/");
 
+  const mismatched = new URL(src ?? sandboxOrigin);
+  mismatched.searchParams.set("parent", "https://evil.example");
+  const denied = await request.get(mismatched.toString());
+  expect(denied.ok()).toBeTruthy();
+  const deniedHtml = await denied.text();
+  expect(deniedHtml).not.toContain("https://evil.example");
+  expect(deniedHtml).toMatch(/sandbox-runtime\.js\?parent=/);
+  const csp = denied.headers()["content-security-policy"] ?? "";
+  expect(csp).toMatch(/frame-ancestors/);
+  expect(csp).not.toContain("evil.example");
+
   const isolated = await page.evaluate(() => {
     const iframe = document.querySelector("main article iframe");
     if (!(iframe instanceof HTMLIFrameElement)) return { present: false, parentDom: "missing" };

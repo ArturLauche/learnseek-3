@@ -36,7 +36,7 @@ Open:
 
 - Feed: http://localhost:3000/home
 - Admin (after seed with bootstrap email): http://localhost:3000/admin
-- Health: http://localhost:3000/api/health
+- Health: http://localhost:3000/api/health (database, redis, queue, storage, AI, email, push, OTLP, ffmpeg, semantic search mode, sandbox reachability, distinct origins)
 
 Default bootstrap admin comes from `ADMIN_BOOTSTRAP_EMAIL` / `ADMIN_BOOTSTRAP_PASSWORD` in `.env`. Change the password immediately.
 
@@ -50,7 +50,7 @@ Oriel talks to any OpenAI-compatible HTTP API:
 - Optional separate transcription endpoint
 - Timeouts, concurrency, JSON schema flag, daily token budget
 
-If these are empty, generation jobs stay idle unless the user stored a BYOK credential. The feed still serves seeded editorial items. That is intentional — never a fake success.
+If these are empty, generation jobs stay idle unless the user stored a BYOK credential. The feed still serves seeded editorial items. That is intentional — never a fake success. Search always uses Postgres FTS. `/api/health` reports `semanticSearch` as `fts_only`, `fts_vectors_idle` (vectors stored, no query embedder), or `hybrid`. Hybrid FTS + pgvector cosine kNN runs only when embeddings exist and a query vector is available.
 
 User BYOK: encrypted at rest with `ENCRYPTION_KEY` (AES-256-GCM). After save, Oriel stores and displays only the last four characters. Keys are scoped to the owning user and used for that user's generation/transcription calls. They are never shared across users. Platform moderation and embeddings still use the operator env key when present, so ranking space stays consistent.
 
@@ -83,11 +83,11 @@ Prefer structured `learning_scenes` (`kind=schema`: quiz, flashcard, timeline, c
 Compiled HTML is rendered in an iframe on **`SANDBOX_ORIGIN`**, a dedicated host (`pnpm sandbox`, default `http://127.0.0.1:3001` — a different host than `APP_URL` so session cookies are not sent). Compose service `sandbox` runs this host, not the full Next app.
 
 - iframe `sandbox="allow-scripts"` **without** `allow-same-origin`
-- CSP: `default-src 'none'; script-src 'self'; connect-src 'none'; frame-ancestors <APP_URL>`
-- postMessage types: `completion`, `answer`, `score`, `height`, `restart` only, targeted at the parent origin
+- CSP: `default-src 'none'; script-src 'self'; connect-src 'none'; frame-ancestors <APP_URL> [APP_ORIGIN]`
+- postMessage types: `completion`, `answer`, `score`, `height`, `restart` only, targeted at the validated parent origin (`APP_URL` / `APP_ORIGIN`). A mismatched `?parent=` is rejected (empty target; no postMessage).
 - Keyboard, labels, reduced motion, contrast, and a noninteractive text fallback
 
-Do not weaken this boundary. Production should use a distinct hostname (for example `sandbox.example.com`), not only a different port.
+Do not weaken this boundary. Production **must** use a distinct hostname (for example `sandbox.example.com` via `SANDBOX_ORIGIN`), not only a different port. Local dev may use `http://127.0.0.1:3001` against `http://localhost:3000`. Compose labels `oriel.role=sandbox` / `oriel.origin` mark the sandbox service. Reverse-proxy examples: `deploy/Caddyfile.example` and `deploy/nginx.conf.example`.
 
 Original prompt (redacted), model id, source, validation, compiled hash, and version history (`artifact_versions`) are persisted.
 
@@ -110,7 +110,7 @@ pnpm test:e2e      # Playwright user + admin journeys (requires app + db)
 
 Admin Playwright covers login, user suspend (step-up password), and a moderation decision against the real database.
 
-Workers: `pnpm worker` consumes BullMQ queues (`generation`, `media`, `moderation`, `transcription`, `embedding`, `notifications`, `scan`, `compile`, `feed-replenish`). Compile jobs spawn `worker/compile-child.mjs` with a 64MB heap, stripped env, and a timeout — untrusted JSX is never compiled in the Next.js process. `pnpm sandbox` is the separate-origin iframe host.
+Workers: `pnpm worker` consumes BullMQ queues (`generation`, `media`, `moderation`, `transcription`, `embedding`, `notifications`, `scan`, `compile`, `feed-replenish`, `retention`). Compile jobs spawn `worker/compile-child.mjs` with a 64MB heap, stripped env, and a timeout — untrusted JSX is never compiled in the Next.js process. `pnpm sandbox` is the separate-origin iframe host. Retention purge runs daily at 03:00 UTC (and from Admin → Ops: dry-run, live enqueue, failed-job retry). Open appeals, moderation cases, reports, and takedowns hold related rows; audit tables are never deleted.
 
 If ClamAV is too heavy for a laptop, keep `SCANNER_MODE=stub` (still writes `scan_results`) and enable `--profile clamav` in production.
 
@@ -122,8 +122,8 @@ Set `ADMIN_BOOTSTRAP_EMAIL` and `ADMIN_BOOTSTRAP_PASSWORD` (min 12 chars) before
 
 1. Provision Postgres (pgvector), Redis, S3-compatible storage.
 2. Set strong `AUTH_SECRET` and `ENCRYPTION_KEY`.
-3. Configure `APP_URL` and `SANDBOX_ORIGIN` as **different origins** (different host in production; `localhost` vs `127.0.0.1` is acceptable locally). Run `pnpm sandbox` beside `pnpm start`.
-4. `docker compose up --build` or run `pnpm build && pnpm start` plus `pnpm worker`.
+3. Configure `APP_URL` / `APP_ORIGIN` and `SANDBOX_ORIGIN` as **different origins**. Production: distinct hostnames (`https://app.example.com` and `https://sandbox.example.com`). Local: `localhost` vs `127.0.0.1` is acceptable. Point TLS at both; see `deploy/Caddyfile.example` and `deploy/nginx.conf.example`. Run `pnpm sandbox` beside `pnpm start`.
+4. `docker compose up --build` or run `pnpm build && pnpm start` plus `pnpm worker` plus `pnpm sandbox`. Compose labels `oriel.role` / `oriel.origin` on `app` and `sandbox` for reverse-proxy wiring.
 5. Put TLS in front of app and sandbox.
 6. Optional: `--profile clamav` for virus scanning; point `SCANNER_MODE=clamav`.
 7. Optional OTLP endpoint for traces and metrics (`OTEL_EXPORTER_OTLP_ENDPOINT`).
