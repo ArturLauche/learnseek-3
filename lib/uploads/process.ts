@@ -22,8 +22,19 @@ import { writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 
-export async function recordStubScan(uploadId: string) {
+export async function recordStubScan(uploadId: string, bytes?: Buffer) {
   const env = getEnv();
+  if (env.SCANNER_MODE === "clamav" && env.CLAMAV_HOST && bytes) {
+    const { clamavScan } = await import("@/lib/scan/clamav");
+    const result = await clamavScan(bytes);
+    await db.insert(scanResults).values({
+      uploadId,
+      scanner: "clamav",
+      status: result.status === "clean" ? "clean" : result.status === "infected" ? "infected" : "error",
+      findings: { detail: result.detail },
+    });
+    return { scanner: "clamav", status: result.status };
+  }
   const scanner = env.SCANNER_MODE === "clamav" ? "clamav" : "stub";
   const status = env.SCANNER_MODE === "clamav" ? "pending" : "skipped_dev_stub";
   await db.insert(scanResults).values({
@@ -32,17 +43,15 @@ export async function recordStubScan(uploadId: string) {
     status,
     findings: { mode: env.SCANNER_MODE },
   });
-  if (env.SCANNER_MODE === "clamav" && env.CLAMAV_HOST) {
-    return { scanner, status: "pending" as const };
-  }
-  return { scanner, status: "skipped_dev_stub" as const };
+  return { scanner, status };
 }
 
 export async function processUpload(uploadId: string) {
   const [upload] = await db.select().from(uploads).where(eq(uploads.id, uploadId)).limit(1);
   if (!upload) return { ok: false, reason: "missing" };
   await db.update(uploads).set({ status: "processing", updatedAt: new Date() }).where(eq(uploads.id, uploadId));
-  await recordStubScan(uploadId);
+  const bytes = upload.objectKey ? await getObjectBuffer(upload.objectKey).catch(() => undefined) : undefined;
+  await recordStubScan(uploadId, bytes);
 
   try {
     if (upload.kind === "text" || upload.kind === "markdown") {

@@ -13,6 +13,7 @@ import {
   learningPaths,
   progressRecords,
 } from "@/lib/db/schema";
+import { CollectionCreate } from "@/components/library/collection-create";
 import { and, desc, eq } from "drizzle-orm";
 
 export default async function LibraryPage() {
@@ -89,6 +90,7 @@ export default async function LibraryPage() {
           ))}
         </TabsContent>
         <TabsContent value="collections" className="mt-6">
+          <CollectionCreate />
           {userCollections.length === 0 ? (
             <p className="text-foreground-muted">Collections you create will live here.</p>
           ) : (

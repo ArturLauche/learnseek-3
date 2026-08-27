@@ -5,6 +5,7 @@ import { desc, eq } from "drizzle-orm";
 import { Alert, AlertDescription, AlertTitle } from "@appica/ui-react/alert";
 import Link from "next/link";
 import { buttonVariants } from "@appica/ui-react/button";
+import { MarkReadButton } from "@/components/notifications/mark-read";
 
 export default async function NotificationsPage() {
   const session = await getCurrentSession();
@@ -34,6 +35,7 @@ export default async function NotificationsPage() {
       <p className="mt-2 text-sm text-foreground-muted">
         No streak guilt. Reminders exist to help you return, not to pressure you.
       </p>
+      <MarkReadButton ids={rows.filter((row) => !row.readAt).map((row) => row.id)} />
       <ul className="mt-8 space-y-4">
         {rows.length === 0 ? <li className="text-foreground-muted">You are caught up.</li> : null}
         {rows.map((row) => (
