@@ -13,10 +13,18 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
-  webServer: {
-    command: "pnpm dev",
-    url: "http://127.0.0.1:3000",
-    reuseExistingServer: true,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      command: "pnpm dev",
+      url: "http://127.0.0.1:3000",
+      reuseExistingServer: true,
+      timeout: 120_000,
+    },
+    {
+      command: "pnpm sandbox",
+      url: "http://127.0.0.1:3001/health",
+      reuseExistingServer: true,
+      timeout: 60_000,
+    },
+  ],
 });

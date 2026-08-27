@@ -26,6 +26,7 @@ docker compose up -d postgres redis minio minio-init
 pnpm db:migrate
 pnpm db:seed
 pnpm dev          # app at http://localhost:3000
+pnpm sandbox      # dedicated sandbox origin at http://127.0.0.1:3001
 pnpm worker       # job consumers
 ```
 
@@ -75,13 +76,20 @@ Every public submission is a moderation case. Text (and later frames, transcript
 
 ## Sandbox security
 
-Generated JSX/HTML is inspected against an allowlist, compiled in a worker (not the web process), and rendered in an iframe on `SANDBOX_ORIGIN` with:
+Generated JSX is **parsed and inspected**, then compiled **only** in `worker/compile-child.mjs` (spawned from the BullMQ compile worker). The child runs with a 64MB heap, a wall-clock timeout, CPU/parse-step budgets, and a **stripped environment** (no `DATABASE_URL`, `AUTH_SECRET`, `AI_API_KEY`, or other secrets). Untrusted JSX is never compiled or executed in the Next.js process.
 
-- `sandbox` **without** `allow-same-origin`
-- Restrictive CSP
-- postMessage types: `completion`, `answer`, `score`, `height`, `restart` only
+Prefer structured `learning_scenes` (`kind=schema`: quiz, flashcard, timeline, comparison, code, prose). JSX/HTML is used only when the schema cannot represent the experience. Allowlisted imports: Appica `button|badge|card|progress|input` and `@oriel/learning/quiz|flashcard|timeline`.
 
-Do not weaken this boundary.
+Compiled HTML is rendered in an iframe on **`SANDBOX_ORIGIN`**, a dedicated host (`pnpm sandbox`, default `http://127.0.0.1:3001` — a different host than `APP_URL` so session cookies are not sent). Compose service `sandbox` runs this host, not the full Next app.
+
+- iframe `sandbox="allow-scripts"` **without** `allow-same-origin`
+- CSP: `default-src 'none'; script-src 'self'; connect-src 'none'; frame-ancestors <APP_URL>`
+- postMessage types: `completion`, `answer`, `score`, `height`, `restart` only, targeted at the parent origin
+- Keyboard, labels, reduced motion, contrast, and a noninteractive text fallback
+
+Do not weaken this boundary. Production should use a distinct hostname (for example `sandbox.example.com`), not only a different port.
+
+Original prompt (redacted), model id, source, validation, compiled hash, and version history (`artifact_versions`) are persisted.
 
 ## Migrations
 
@@ -102,7 +110,7 @@ pnpm test:e2e      # Playwright user + admin journeys (requires app + db)
 
 Admin Playwright covers login, user suspend (step-up password), and a moderation decision against the real database.
 
-Workers: `pnpm worker` consumes BullMQ queues (`generation`, `media`, `moderation`, `transcription`, `embedding`, `notifications`, `scan`, `compile`, `feed-replenish`). Compile jobs spawn `worker/compile-child.mjs` with a 64MB heap and a timeout — untrusted JSX is never compiled in the Next.js process.
+Workers: `pnpm worker` consumes BullMQ queues (`generation`, `media`, `moderation`, `transcription`, `embedding`, `notifications`, `scan`, `compile`, `feed-replenish`). Compile jobs spawn `worker/compile-child.mjs` with a 64MB heap, stripped env, and a timeout — untrusted JSX is never compiled in the Next.js process. `pnpm sandbox` is the separate-origin iframe host.
 
 If ClamAV is too heavy for a laptop, keep `SCANNER_MODE=stub` (still writes `scan_results`) and enable `--profile clamav` in production.
 
@@ -114,7 +122,7 @@ Set `ADMIN_BOOTSTRAP_EMAIL` and `ADMIN_BOOTSTRAP_PASSWORD` (min 12 chars) before
 
 1. Provision Postgres (pgvector), Redis, S3-compatible storage.
 2. Set strong `AUTH_SECRET` and `ENCRYPTION_KEY`.
-3. Configure `APP_URL` and `SANDBOX_ORIGIN` as different origins.
+3. Configure `APP_URL` and `SANDBOX_ORIGIN` as **different origins** (different host in production; `localhost` vs `127.0.0.1` is acceptable locally). Run `pnpm sandbox` beside `pnpm start`.
 4. `docker compose up --build` or run `pnpm build && pnpm start` plus `pnpm worker`.
 5. Put TLS in front of app and sandbox.
 6. Optional: `--profile clamav` for virus scanning; point `SCANNER_MODE=clamav`.

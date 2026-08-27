@@ -1,7 +1,9 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db, client } from "@/lib/db";
-import { contentItems, searches, topics } from "@/lib/db/schema";
+import { contentItems, embeddings, searches, topics } from "@/lib/db/schema";
 import { isPubliclyVisible } from "@/lib/content/visibility";
+import { embedTexts } from "@/lib/ai/provider";
+import { isAiConfigured } from "@/lib/env";
 
 export type SearchFilters = {
   q: string;
@@ -43,7 +45,7 @@ export async function searchContent(filters: SearchFilters) {
     const conditions = [
       eq(contentItems.publicationState, "published"),
       eq(contentItems.visibility, "public"),
-      isNull(contentItems.deletedAt),
+      sql`${contentItems.deletedAt} is null`,
     ];
     if (q) conditions.push(sql`${contentItems.title} ilike ${"%" + q + "%"}`);
     rows = await db
@@ -51,6 +53,19 @@ export async function searchContent(filters: SearchFilters) {
       .from(contentItems)
       .where(and(...conditions))
       .limit(40);
+  }
+
+  const semanticIds = q && isAiConfigured() ? await semanticIdsFor(q) : [];
+  if (semanticIds.length > 0) {
+    const missing = semanticIds.filter((id) => !rows.some((row) => row.id === id));
+    if (missing.length) {
+      const extra = await db.select().from(contentItems).where(inArray(contentItems.id, missing));
+      rows = [...extra, ...rows];
+    }
+    rows.sort((a, b) => semanticIds.indexOf(a.id) - semanticIds.indexOf(b.id) || 0);
+    const unmatched = rows.filter((row) => !semanticIds.includes(row.id));
+    const matched = semanticIds.map((id) => rows.find((row) => row.id === id)).filter(Boolean) as Row[];
+    rows = [...matched, ...unmatched].slice(0, 40);
   }
 
   const visible = rows.filter((row) =>
@@ -70,9 +85,30 @@ export async function searchContent(filters: SearchFilters) {
       format: filters.format,
       difficulty: filters.difficulty,
       language: filters.language,
+      semantic: semanticIds.length > 0,
     },
     resultCount: visible.length,
   });
 
   return visible;
+}
+
+async function semanticIdsFor(q: string): Promise<string[]> {
+  try {
+    const vectors = await embedTexts([q.slice(0, 2000)]);
+    const vector = vectors?.[0];
+    if (!vector) return [];
+    const vectorLiteral = `[${vector.join(",")}]`;
+    const rows = await db
+      .select({
+        contentItemId: embeddings.contentItemId,
+        distance: sql<number>`${embeddings.embedding} <=> ${sql.raw(`'${vectorLiteral}'::vector`)}`,
+      })
+      .from(embeddings)
+      .orderBy(sql`${embeddings.embedding} <=> ${sql.raw(`'${vectorLiteral}'::vector`)}`)
+      .limit(12);
+    return rows.filter((row) => Number(row.distance) < 0.55).map((row) => row.contentItemId);
+  } catch {
+    return [];
+  }
 }

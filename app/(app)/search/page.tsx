@@ -65,6 +65,11 @@ export default async function SearchPage({
         </div>
       </form>
       <ul className="mt-8 space-y-4">
+        {q.length === 0 && !params.topic ? (
+          <li className="text-foreground-muted">Type a query to search titles, objectives, and passages. Semantic matches merge in when embeddings are configured.</li>
+        ) : rows.length === 0 ? (
+          <li className="text-foreground-muted">No published items matched. Try fewer words or a different topic.</li>
+        ) : null}
         {rows.map((item) => (
           <li key={item.id} className="border-b border-border-muted pb-4">
             <Link href={`/learn/${item.slug}`} className="font-serif text-xl underline">

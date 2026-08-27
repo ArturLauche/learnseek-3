@@ -1,57 +1,12 @@
-import { spawn } from "node:child_process";
-import path from "node:path";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { generatedArtifacts, learningScenes } from "@/lib/db/schema";
+import { artifactVersions, generatedArtifacts, learningScenes } from "@/lib/db/schema";
 import { putObject } from "@/lib/storage";
 import { sha256 } from "@/lib/hash";
 import { renderSceneHtml } from "./schema-html";
-import { inspectAndSanitize } from "./sanitize";
+import { inspectSource } from "./compiler.mjs";
+import { runCompileChild } from "./spawn";
 import { logger } from "@/lib/logger";
-
-const CHILD = path.join(process.cwd(), "worker/compile-child.mjs");
-
-function runChild(payload: unknown, timeoutMs = 4000): Promise<{ ok: boolean; html?: string; reasons?: string[] }> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ["--max-old-space-size=64", CHILD], {
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      reject(new Error("compile_timeout"));
-    }, timeoutMs);
-    let out = "";
-    let err = "";
-    child.stdout.on("data", (chunk: Buffer) => {
-      out += chunk.toString();
-      if (out.length > 250_000) {
-        child.kill("SIGKILL");
-        reject(new Error("compile_output_limit"));
-      }
-    });
-    child.stderr.on("data", (chunk: Buffer) => {
-      err += chunk.toString();
-    });
-    child.on("error", (error) => {
-      clearTimeout(timer);
-      reject(error);
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      if (code !== 0) {
-        reject(new Error(err || `compile_exit_${code}`));
-        return;
-      }
-      try {
-        resolve(JSON.parse(out) as { ok: boolean; html?: string; reasons?: string[] });
-      } catch {
-        reject(new Error("compile_parse"));
-      }
-    });
-    child.stdin.write(JSON.stringify(payload));
-    child.stdin.end();
-  });
-}
 
 export async function compileArtifact(artifactId: string) {
   const [artifact] = await db
@@ -66,8 +21,8 @@ export async function compileArtifact(artifactId: string) {
     .set({ compileState: "compiling", updatedAt: new Date() })
     .where(eq(generatedArtifacts.id, artifactId));
 
-  let source = artifact.originalCode ?? "";
-  let kind: "html" | "jsx" | "schema" = "html";
+  let source = artifact.originalCode ?? artifact.source ?? "";
+  let kind: "html" | "jsx" = "html";
   if (artifact.sceneId) {
     const [scene] = await db
       .select()
@@ -75,66 +30,100 @@ export async function compileArtifact(artifactId: string) {
       .where(eq(learningScenes.id, artifact.sceneId))
       .limit(1);
     if (scene) {
-      kind = scene.kind;
       if (scene.kind === "schema") {
         source = renderSceneHtml(scene.schema, scene.fallbackText ?? "");
         kind = "html";
+      } else if (scene.kind === "jsx") {
+        kind = "jsx";
+        source = String(scene.schema.jsx ?? scene.schema.code ?? artifact.originalCode ?? "");
       } else {
-        source = scene.kind === "html" ? (scene.fallbackText ?? "") : (artifact.originalCode ?? "");
-        if (!source && scene.fallbackText) source = scene.fallbackText;
+        kind = "html";
+        source = String(scene.schema.html ?? scene.fallbackText ?? artifact.originalCode ?? "");
       }
     }
+  } else if (looksLikeJsx(source)) {
+    kind = "jsx";
   }
 
-  const local = inspectAndSanitize(kind === "jsx" ? "jsx" : "html", source);
-  if (!local.ok) {
-    await db
-      .update(generatedArtifacts)
-      .set({
-        compileState: "rejected",
-        validation: { reasons: local.reasons },
-        updatedAt: new Date(),
-      })
-      .where(eq(generatedArtifacts.id, artifactId));
-    return { ok: false, reasons: local.reasons };
+  const inspected = inspectSource(source);
+  if (!inspected.ok) {
+    await persistFailure(artifact, "rejected", { reasons: inspected.reasons });
+    return { ok: false, reasons: inspected.reasons };
   }
 
   let childResult: { ok: boolean; html?: string; reasons?: string[] };
   try {
-    childResult = await runChild({ kind, source: local.html });
+    childResult = await runCompileChild({ kind, source });
   } catch (error) {
     logger.error({ err: error, artifactId }, "compile child failed");
-    await db
-      .update(generatedArtifacts)
-      .set({ compileState: "failed", validation: { error: "child" }, updatedAt: new Date() })
-      .where(eq(generatedArtifacts.id, artifactId));
+    await persistFailure(artifact, "failed", { error: "child" });
     return { ok: false, reasons: ["child_failed"] };
   }
 
   if (!childResult.ok || !childResult.html) {
-    await db
-      .update(generatedArtifacts)
-      .set({
-        compileState: "rejected",
-        validation: { reasons: childResult.reasons ?? ["rejected"] },
-        updatedAt: new Date(),
-      })
-      .where(eq(generatedArtifacts.id, artifactId));
-    return { ok: false, reasons: childResult.reasons ?? ["rejected"] };
+    const reasons = childResult.reasons ?? ["rejected"];
+    await persistFailure(artifact, "rejected", { reasons });
+    return { ok: false, reasons };
   }
 
   const hash = sha256(childResult.html);
-  const key = `artifacts/${artifactId}.html`;
+  const versionNumber = await nextVersion(artifact.id);
+  const key = `artifacts/${artifact.id}/v${versionNumber}.html`;
   await putObject({ key, body: childResult.html, contentType: "text/html; charset=utf-8" });
+
+  const validation = {
+    ok: true,
+    bytes: childResult.html.length,
+    compiledIn: "compile-child",
+    version: versionNumber,
+  };
+
   await db
     .update(generatedArtifacts)
     .set({
       compileState: "compiled",
       compiledObjectKey: key,
       compiledHash: hash,
-      validation: { ok: true, bytes: childResult.html.length },
+      originalCode: source,
+      validation,
       updatedAt: new Date(),
     })
     .where(eq(generatedArtifacts.id, artifactId));
-  return { ok: true, hash, key };
+
+  await db.insert(artifactVersions).values({
+    artifactId: artifact.id,
+    versionNumber,
+    originalCode: source,
+    compiledHash: hash,
+    compiledObjectKey: key,
+    promptRedacted: artifact.promptRedacted,
+    modelId: artifact.modelId,
+    validation,
+    moderation: (artifact.validation as { moderation?: Record<string, unknown> } | null)?.moderation ?? {},
+  });
+
+  return { ok: true, hash, key, versionNumber };
+}
+
+function looksLikeJsx(source: string) {
+  return /<[A-Z][A-Za-z0-9]*[\s/>]/.test(source) || /from\s+['"]@appica\//.test(source);
+}
+
+async function nextVersion(artifactId: string) {
+  const [row] = await db
+    .select({ n: sql<number>`coalesce(max(${artifactVersions.versionNumber}), 0)` })
+    .from(artifactVersions)
+    .where(eq(artifactVersions.artifactId, artifactId));
+  return Number(row?.n ?? 0) + 1;
+}
+
+async function persistFailure(
+  artifact: typeof generatedArtifacts.$inferSelect,
+  compileState: "rejected" | "failed",
+  validation: Record<string, unknown>,
+) {
+  await db
+    .update(generatedArtifacts)
+    .set({ compileState, validation, updatedAt: new Date() })
+    .where(eq(generatedArtifacts.id, artifact.id));
 }

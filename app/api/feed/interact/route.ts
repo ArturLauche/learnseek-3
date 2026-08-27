@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { feedInteractions, userTopicPreferences, contentItems } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { contentItems, feedInteractions, saves, userTopicPreferences } from "@/lib/db/schema";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { enqueueTracked } from "@/lib/jobs";
 import { recordProgress } from "@/lib/progress";
 import { rateLimitRequest } from "@/lib/rate-limit";
+import { reviewSrsCard } from "@/lib/learn/srs";
 
 const schema = z.object({
   contentItemId: z.string().uuid(),
@@ -100,6 +101,19 @@ export async function POST(request: NextRequest) {
       seconds: parsed.data.value ?? 60,
       completed: true,
     });
+    const [saved] = await db
+      .select({ id: saves.id })
+      .from(saves)
+      .where(and(eq(saves.userId, session.user.id), eq(saves.contentItemId, parsed.data.contentItemId)))
+      .limit(1);
+    if (saved) {
+      const quality = Math.max(0, Math.min(5, parsed.data.value ?? 4));
+      await reviewSrsCard({
+        userId: session.user.id,
+        contentItemId: parsed.data.contentItemId,
+        quality,
+      });
+    }
   }
 
   return NextResponse.json({ ok: true });

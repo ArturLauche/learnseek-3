@@ -14,7 +14,7 @@ import {
 } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { putObject } from "@/lib/storage";
-import { z } from "zod";
+import { processDeletionRequest } from "@/lib/privacy/deletion";
 
 const schema = z.object({ kind: z.enum(["export", "delete"]) });
 
@@ -25,12 +25,16 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: "Invalid" }, { status: 400 });
 
   if (parsed.data.kind === "delete") {
-    await db.insert(deletionRequests).values({ userId: session.user.id, status: "queued" });
+    const [queued] = await db
+      .insert(deletionRequests)
+      .values({ userId: session.user.id, status: "queued" })
+      .returning();
     await db
       .update(user)
       .set({ status: "pending_deletion", updatedAt: new Date() })
       .where(eq(user.id, session.user.id));
-    return NextResponse.json({ ok: true, status: "deletion_queued" });
+    if (queued) await processDeletionRequest(queued.id);
+    return NextResponse.json({ ok: true, status: "deleted" });
   }
 
   const [profile] = await db.select().from(profiles).where(eq(profiles.userId, session.user.id));

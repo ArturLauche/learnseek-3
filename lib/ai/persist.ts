@@ -5,6 +5,7 @@ import {
   contentItems,
   contentItemTopics,
   contentVersions,
+  generatedArtifacts,
   generationJobs,
   learningScenes,
   sources,
@@ -20,6 +21,8 @@ import { resolveProviderCredentials } from "./credentials";
 import { logger } from "@/lib/logger";
 import { stripSensitive } from "@/lib/pii";
 import { autoTagContent } from "@/lib/content/autotag";
+import { preferStructuredScene } from "@/lib/sandbox/scene-policy";
+import { enqueueTracked } from "@/lib/jobs";
 
 export async function persistLearningDraft(params: {
   draft: LearningItemDraft;
@@ -27,6 +30,8 @@ export async function persistLearningDraft(params: {
   ownerUserId?: string | null;
   uploadId?: string | null;
   jobId?: string;
+  promptRedacted?: string | null;
+  modelId?: string | null;
 }) {
   const dup = await findSemanticDuplicate({
     title: params.draft.title,
@@ -97,14 +102,51 @@ export async function persistLearningDraft(params: {
   }
 
   for (const [position, scene] of params.draft.scenes.entries()) {
-    await db.insert(learningScenes).values({
-      contentItemId: item.id,
-      versionId: version?.id,
-      kind: scene.kind,
-      position,
-      schema: scene.schema,
-      fallbackText: scene.fallbackText,
-    });
+    const structured = preferStructuredScene(scene);
+    const [inserted] = await db
+      .insert(learningScenes)
+      .values({
+        contentItemId: item.id,
+        versionId: version?.id,
+        kind: structured.kind,
+        position,
+        schema: structured.schema,
+        fallbackText: structured.fallbackText,
+      })
+      .returning();
+
+    const originalCode =
+      structured.kind === "jsx"
+        ? String(structured.schema.jsx ?? structured.schema.code ?? structured.fallbackText)
+        : structured.kind === "html"
+          ? String(structured.schema.html ?? structured.fallbackText)
+          : structured.fallbackText;
+
+    const [artifact] = await db
+      .insert(generatedArtifacts)
+      .values({
+        contentItemId: item.id,
+        sceneId: inserted?.id,
+        promptRedacted: params.promptRedacted ?? null,
+        modelId: params.modelId ?? null,
+        source: structured.kind,
+        originalCode,
+        compileState: "pending",
+        validation: {
+          sceneKind: structured.kind,
+        },
+      })
+      .returning();
+    if (artifact) {
+      await enqueueTracked({
+        queue: "compile",
+        kind: "compile",
+        data: { artifactId: artifact.id },
+        userId: params.ownerUserId,
+        contentItemId: item.id,
+        dedupeKey: `compile:${artifact.id}`,
+      }).catch((error) => logger.warn({ err: error, artifactId: artifact.id }, "compile enqueue failed"));
+    }
   }
 
   if (topic) {
@@ -217,5 +259,7 @@ export async function runGenerationJob(input: {
     origin: "ai_generated",
     ownerUserId: input.userId,
     jobId: input.jobId,
+    promptRedacted: stripSensitive(`${topic} ${input.instruction ?? ""}`.slice(0, 2000)),
+    modelId: credentials.model || undefined,
   });
 }

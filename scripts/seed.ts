@@ -295,7 +295,7 @@ async function main() {
     .values({
       slug: "community-v1",
       version: "1",
-      body: { comments: false, sensitiveSourcesRequired: true },
+      body: { comments: false, sensitiveSourcesRequired: true, retentionDays: 730 },
     })
     .onConflictDoNothing();
 

@@ -12,11 +12,15 @@ export function AccountSettings({
   byok,
   delivery,
   vapidPublicKey,
+  consents = [],
+  languages = ["en"],
 }: {
   email: string;
   byok: { providerName: string; keyLastFour: string; baseUrl: string }[];
   delivery: { email: boolean; push: boolean };
   vapidPublicKey?: string;
+  consents?: { kind: string; granted: boolean; version: string; at: string }[];
+  languages?: string[];
 }) {
   const [message, setMessage] = useState<string | null>(null);
   return (
@@ -215,6 +219,65 @@ export function AccountSettings({
           </Button>
         </div>
         <p className="mt-2 text-xs text-foreground-muted">Email on file: {email}</p>
+      </section>
+      <section>
+        <h2 className="font-serif text-2xl">Consent records</h2>
+        <p className="mt-1 text-sm text-foreground-muted">
+          Optional analytics and research are off unless you grant them. Each change writes an immutable consent row.
+          Interface language codes on this account: {languages.join(", ")}.
+        </p>
+        {consents.length > 0 ? (
+          <ul className="mt-2 text-xs text-foreground-muted">
+            {consents.map((row) => (
+              <li key={`${row.kind}-${row.at}`}>
+                {row.kind} · {row.granted ? "granted" : "withdrawn"} · {row.version} · {row.at.slice(0, 10)}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-xs text-foreground-muted">No consent records yet.</p>
+        )}
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              void fetch("/api/settings/consent", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ kind: "analytics", granted: true }),
+              }).then(() => setMessage("Analytics consent recorded."))
+            }
+          >
+            Grant analytics
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              void fetch("/api/settings/consent", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ kind: "analytics", granted: false }),
+              }).then(() => setMessage("Analytics consent withdrawn."))
+            }
+          >
+            Withdraw analytics
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              void fetch("/api/settings/consent", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ kind: "research", granted: true }),
+              }).then(() => setMessage("Research consent recorded."))
+            }
+          >
+            Grant research
+          </Button>
+        </div>
       </section>
       {message ? (
         <Alert variant="info">

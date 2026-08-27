@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { feedInteractions, saves } from "@/lib/db/schema";
+import { ensureSrsCard } from "@/lib/learn/srs";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
@@ -39,6 +40,7 @@ export async function POST(request: NextRequest) {
       userId: session.user.id,
       contentItemId: parsed.data.contentItemId,
     });
+    await ensureSrsCard(session.user.id, parsed.data.contentItemId);
     await db.insert(feedInteractions).values({
       userId: session.user.id,
       contentItemId: parsed.data.contentItemId,

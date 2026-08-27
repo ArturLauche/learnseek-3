@@ -132,6 +132,26 @@ export const generatedArtifacts = pgTable("generated_artifacts", {
   updatedAt,
 });
 
+export const artifactVersions = pgTable(
+  "artifact_versions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    artifactId: uuid("artifact_id")
+      .notNull()
+      .references(() => generatedArtifacts.id, { onDelete: "cascade" }),
+    versionNumber: integer("version_number").notNull(),
+    originalCode: text("original_code"),
+    compiledHash: text("compiled_hash"),
+    compiledObjectKey: text("compiled_object_key"),
+    promptRedacted: text("prompt_redacted"),
+    modelId: text("model_id"),
+    validation: jsonb("validation").$type<Record<string, unknown>>().notNull().default({}),
+    moderation: jsonb("moderation").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt,
+  },
+  (table) => [uniqueIndex("artifact_versions_uidx").on(table.artifactId, table.versionNumber)],
+);
+
 export const contentItemTopics = pgTable(
   "content_item_topics",
   {

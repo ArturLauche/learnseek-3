@@ -72,6 +72,7 @@ export default async function LearnPage({ params }: { params: Promise<{ slug: st
           <LearningFrame
             src={`${sandboxOrigin}/sandbox/${artifact.id}`}
             title={`Sandboxed experience for ${item.title}`}
+            fallbackText={item.bodyText}
           />
         </div>
       ) : null}

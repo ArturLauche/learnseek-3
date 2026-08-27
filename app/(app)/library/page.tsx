@@ -12,6 +12,7 @@ import {
   uploads,
   learningPaths,
   progressRecords,
+  spacedRepetitionCards,
 } from "@/lib/db/schema";
 import { CollectionCreate } from "@/components/library/collection-create";
 import { and, desc, eq } from "drizzle-orm";
@@ -60,6 +61,13 @@ export default async function LibraryPage() {
     .select()
     .from(contentItems)
     .where(and(eq(contentItems.ownerUserId, session.user.id), eq(contentItems.publicationState, "draft")));
+  const dueCards = await db
+    .select({ card: spacedRepetitionCards, item: contentItems })
+    .from(spacedRepetitionCards)
+    .innerJoin(contentItems, eq(spacedRepetitionCards.contentItemId, contentItems.id))
+    .where(eq(spacedRepetitionCards.userId, session.user.id))
+    .orderBy(spacedRepetitionCards.dueAt)
+    .limit(40);
   const pathProgress = await db
     .select({ path: learningPaths, record: progressRecords })
     .from(progressRecords)
@@ -72,6 +80,7 @@ export default async function LibraryPage() {
       <Tabs defaultValue="saved" className="mt-6">
         <TabsList>
           <TabsTrigger value="saved">Saved</TabsTrigger>
+          <TabsTrigger value="review">Review</TabsTrigger>
           <TabsTrigger value="collections">Collections</TabsTrigger>
           <TabsTrigger value="paths">Paths</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
@@ -88,6 +97,22 @@ export default async function LibraryPage() {
               <p className="text-sm text-foreground-muted">{item.learningObjective}</p>
             </article>
           ))}
+        </TabsContent>
+        <TabsContent value="review" className="mt-6 space-y-3">
+          {dueCards.length === 0 ? (
+            <p className="text-foreground-muted">Saved concepts schedule a review here. Complete an item to space it out.</p>
+          ) : (
+            dueCards.map(({ card, item }) => (
+              <article key={card.id} className="border-b border-border-muted py-3">
+                <Link href={`/learn/${item.slug}`} className="font-serif text-xl underline">
+                  {item.title}
+                </Link>
+                <p className="text-sm text-foreground-muted">
+                  Due {card.dueAt.toISOString().slice(0, 10)} · interval {card.intervalDays}d · ease {card.ease.toFixed(2)}
+                </p>
+              </article>
+            ))
+          )}
         </TabsContent>
         <TabsContent value="collections" className="mt-6">
           <CollectionCreate />

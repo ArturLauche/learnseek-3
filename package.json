@@ -10,6 +10,7 @@
     "start": "next start",
     "lint": "eslint",
     "worker": "tsx worker/index.ts",
+    "sandbox": "tsx server/sandbox-host.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",

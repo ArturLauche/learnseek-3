@@ -3,7 +3,7 @@ import { z } from "zod";
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   APP_URL: z.string().default("http://localhost:3000"),
-  SANDBOX_ORIGIN: z.string().default("http://localhost:3001"),
+  SANDBOX_ORIGIN: z.string().default("http://127.0.0.1:3001"),
   DATABASE_URL: z.string().min(1),
   REDIS_URL: z.string().min(1),
   AUTH_SECRET: z.string().min(16),

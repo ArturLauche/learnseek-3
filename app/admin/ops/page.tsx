@@ -21,9 +21,14 @@ export default async function AdminOpsPage() {
           {policies.map((row) => (
             <li key={row.id}>
               {row.slug} · v{row.version}
+              {typeof row.body.retentionDays === "number" ? ` · retention ${row.body.retentionDays} days` : ""}
             </li>
           ))}
         </ul>
+        <p className="mt-2 text-xs text-foreground-muted">
+          Retention is operator policy JSON on <code>policy_configs.body.retentionDays</code>. Legal pages stay
+          placeholders until the operator publishes their own notices.
+        </p>
       </section>
       <section className="space-y-2">
         <h2 className="text-lg font-medium">Import / export</h2>

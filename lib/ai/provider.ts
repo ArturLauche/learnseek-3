@@ -232,7 +232,7 @@ export async function generateLearningItem(input: {
       {
         role: "system",
         content:
-          "You generate original microlearning items for Oriel. Never copy commercial summary products. Cite public sources. Return JSON only. Strip personal data.",
+          "You generate original microlearning items for Oriel. Never copy commercial summary products. Cite public sources. Return JSON only. Strip personal data. Prefer scenes.kind=schema with type quiz, flashcard, timeline, comparison, code, or prose. Use kind=jsx only when the experience cannot be represented as schema. JSX may import only @appica/ui-react/button|badge|card|progress|input and @oriel/learning/quiz|flashcard|timeline. Do not emit event handlers, URLs, or extra imports.",
       },
       {
         role: "user",

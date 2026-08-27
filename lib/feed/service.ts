@@ -19,6 +19,7 @@ import { itemSignals } from "./signals";
 import {
   applyDiversity,
   isEligible,
+  publicRankingExplanation,
   replenishCount,
   reserveAntiEchoSlots,
   scoreCandidate,
@@ -158,7 +159,11 @@ export async function replenishFeedQueue(params: {
         format: breakdown.format,
         quality: breakdown.quality,
         freshness: breakdown.freshness,
+        exploration: breakdown.exploration,
         policy: eligibility.reason,
+        explanation: publicRankingExplanation(breakdown)
+          .map((row) => `${row.factor}: ${row.why} (${row.score.toFixed(2)})`)
+          .join(" · "),
       },
     });
   }
