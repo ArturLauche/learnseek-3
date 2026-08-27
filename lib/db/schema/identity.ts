@@ -11,7 +11,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { user } from "./auth";
 import { depthEnum, knowledgeLevelEnum, toneEnum } from "./enums";
-import { createdAt, deletedAt, updatedAt } from "./helpers";
+import { createdAt, deletedAt, timestamptz, updatedAt } from "./helpers";
 
 export const roles = pgTable("roles", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -190,7 +190,7 @@ export const creators = pgTable(
     displayName: text("display_name").notNull(),
     slug: text("slug").notNull(),
     bio: text("bio"),
-    verifiedAt: deletedAt,
+    verifiedAt: timestamptz("verified_at"),
     status: text("status").notNull().default("active"),
     createdAt,
     updatedAt,
