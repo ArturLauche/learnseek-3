@@ -116,7 +116,7 @@ export function zipUncompressedTooLarge(bytes: Uint8Array, maxBytes = 40_000_000
   if (!archiveLooksZip(bytes)) return false;
   let total = 0;
   let offset = 0;
-  while (offset + 30 < bytes.length) {
+  while (offset + 30 <= bytes.length) {
     if (bytes[offset] !== 0x50 || bytes[offset + 1] !== 0x4b) break;
     if (bytes[offset + 2] !== 0x03 || bytes[offset + 3] !== 0x04) break;
     const nameLen = bytes[offset + 26]! + (bytes[offset + 27]! << 8);
