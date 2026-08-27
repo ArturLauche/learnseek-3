@@ -8,5 +8,5 @@ test("explore search and legal pages render", async ({ page }) => {
   await page.goto("/legal/privacy");
   await expect(page.getByRole("heading", { name: /privacy/i })).toBeVisible();
   await page.goto("/sign-in");
-  await expect(page.getByRole("button", { name: /sign in/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /sign in/i })).toBeVisible();
 });
