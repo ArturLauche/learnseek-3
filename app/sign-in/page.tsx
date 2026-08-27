@@ -38,11 +38,11 @@ export default function SignInPage() {
       >
         <Field name="email">
           <FieldLabel>Email</FieldLabel>
-          <Input type="email" autoComplete="email" required />
+          <Input name="email" type="email" autoComplete="email" required />
         </Field>
         <Field name="password">
           <FieldLabel>Password</FieldLabel>
-          <Input type="password" autoComplete="current-password" required />
+          <Input name="password" type="password" autoComplete="current-password" required />
         </Field>
         {error ? <FieldError match>{error}</FieldError> : null}
         <Button type="submit" className="w-full">

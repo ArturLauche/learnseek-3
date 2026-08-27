@@ -39,11 +39,15 @@ export async function notify(params: {
     })
     .returning();
 
-  await enqueue("notifications", "deliver", {
-    notificationId: row?.id,
-    userId: params.userId,
-    type: params.type,
-    dedupeKey: `notify:${params.userId}:${params.type}:${row?.id}`,
-  });
+  try {
+    await enqueue("notifications", "deliver", {
+      notificationId: row?.id,
+      userId: params.userId,
+      type: params.type,
+      dedupeKey: `notify:${params.userId}:${params.type}:${row?.id}`,
+    });
+  } catch {
+    /* in-app row is already stored; delivery job is best-effort */
+  }
   return { skipped: false as const, notification: row };
 }

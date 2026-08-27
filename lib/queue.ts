@@ -39,8 +39,10 @@ export async function enqueue(
   data: Record<string, unknown>,
   opts?: JobsOptions,
 ) {
+  const raw = typeof data.dedupeKey === "string" ? data.dedupeKey : undefined;
+  const jobId = raw ? raw.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 128) : undefined;
   return getQueue(name).add(jobName, data, {
-    jobId: typeof data.dedupeKey === "string" ? data.dedupeKey : undefined,
+    jobId,
     ...opts,
   });
 }

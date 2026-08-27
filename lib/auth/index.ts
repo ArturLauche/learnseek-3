@@ -73,7 +73,11 @@ export const auth = betterAuth({
     },
   },
   plugins: [nextCookies()],
-  trustedOrigins: [process.env.APP_URL ?? "http://localhost:3000"],
+  trustedOrigins: [
+    process.env.APP_URL ?? "http://localhost:3000",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+  ],
   advanced: {
     useSecureCookies: process.env.NODE_ENV === "production",
   },

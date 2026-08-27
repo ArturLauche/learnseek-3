@@ -29,11 +29,13 @@ import {
   policyConfigs,
   notificationTemplates,
   announcements,
+  account,
 } from "@/lib/db/schema";
 import { ROLE_PERMISSIONS } from "@/lib/auth/permissions";
 import { SEED_ITEMS, SEED_TOPICS } from "@/lib/seed/catalog";
 import { auth } from "@/lib/auth";
 import { logger } from "@/lib/logger";
+import { hashPassword } from "better-auth/crypto";
 
 async function upsertRole(slug: string, name: string, description: string) {
   const [existing] = await db.select().from(roles).where(eq(roles.slug, slug)).limit(1);
@@ -327,21 +329,44 @@ async function main() {
   const adminPassword = process.env.ADMIN_BOOTSTRAP_PASSWORD;
   if (adminEmail && adminPassword) {
     const [existingAdmin] = await db.select().from(user).where(eq(user.email, adminEmail)).limit(1);
+    let adminId = existingAdmin?.id;
     if (!existingAdmin) {
       const result = await auth.api.signUpEmail({
         body: { email: adminEmail, password: adminPassword, name: "Oriel Admin" },
       });
-      const adminId = result.user.id;
-      await db.update(user).set({ handle: process.env.ADMIN_BOOTSTRAP_HANDLE ?? "oriel-admin" }).where(eq(user.id, adminId));
-      await db.insert(userRoles).values({ userId: adminId, roleId: roleRows.admin.id });
-      await db.insert(userRoles).values({ userId: adminId, roleId: roleRows.superadmin.id });
+      adminId = result.user.id;
       logger.info({ email: adminEmail }, "bootstrap admin created");
-    } else {
-      await db.insert(userRoles).values({ userId: existingAdmin.id, roleId: roleRows.admin.id }).onConflictDoNothing();
+    }
+    if (adminId) {
+      await db
+        .update(user)
+        .set({ handle: process.env.ADMIN_BOOTSTRAP_HANDLE ?? "oriel-admin" })
+        .where(eq(user.id, adminId));
+      await db.insert(userRoles).values({ userId: adminId, roleId: roleRows.admin.id }).onConflictDoNothing();
       await db
         .insert(userRoles)
-        .values({ userId: existingAdmin.id, roleId: roleRows.superadmin.id })
+        .values({ userId: adminId, roleId: roleRows.superadmin.id })
         .onConflictDoNothing();
+      const [acct] = await db.select().from(account).where(eq(account.userId, adminId)).limit(1);
+      if (!acct?.password) {
+        const passwordHash = await hashPassword(adminPassword);
+        if (!acct) {
+          await db.insert(account).values({
+            id: crypto.randomUUID(),
+            accountId: adminId,
+            providerId: "credential",
+            issuer: "local:credential",
+            userId: adminId,
+            password: passwordHash,
+          });
+        } else {
+          await db
+            .update(account)
+            .set({ password: passwordHash, issuer: "local:credential", providerId: "credential" })
+            .where(eq(account.id, acct.id));
+        }
+        logger.info({ email: adminEmail }, "bootstrap admin password restored");
+      }
     }
   }
 

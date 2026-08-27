@@ -40,15 +40,15 @@ export default function SignUpPage() {
       >
         <Field name="name">
           <FieldLabel>Name</FieldLabel>
-          <Input autoComplete="name" required />
+          <Input name="name" autoComplete="name" required />
         </Field>
         <Field name="email">
           <FieldLabel>Email</FieldLabel>
-          <Input type="email" autoComplete="email" required />
+          <Input name="email" type="email" autoComplete="email" required />
         </Field>
         <Field name="password">
           <FieldLabel>Password</FieldLabel>
-          <Input type="password" autoComplete="new-password" required minLength={12} />
+          <Input name="password" type="password" autoComplete="new-password" required minLength={12} />
           <FieldDescription>At least 12 characters.</FieldDescription>
         </Field>
         {error ? <FieldError match>{error}</FieldError> : null}
