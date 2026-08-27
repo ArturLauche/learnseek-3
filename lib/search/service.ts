@@ -34,8 +34,8 @@ export async function searchContent(filters: SearchFilters) {
   type Row = typeof contentItems.$inferSelect;
   let rows: Row[] = [];
   try {
-    const result = await client<Row[]>`
-      select *
+    const result = await client<{ id: string }[]>`
+      select id
       from content_items
       where publication_state = 'published'
         and visibility = 'public'
@@ -49,7 +49,12 @@ export async function searchContent(filters: SearchFilters) {
         case when ${q} = '' then 0 else ts_rank(search_vector, websearch_to_tsquery('english', ${q})) end desc
       limit 40
     `;
-    rows = result as Row[];
+    const ftsOrder = result.map((row) => row.id);
+    if (ftsOrder.length) {
+      const mapped = await db.select().from(contentItems).where(inArray(contentItems.id, ftsOrder));
+      const byId = new Map(mapped.map((row) => [row.id, row]));
+      rows = ftsOrder.map((id) => byId.get(id)).filter(Boolean) as Row[];
+    }
   } catch {
     const conditions = [
       eq(contentItems.publicationState, "published"),
@@ -71,7 +76,7 @@ export async function searchContent(filters: SearchFilters) {
     try {
       const neighbors = await nearestByEmbedding(queryVector, 12);
       knnIds = neighbors.filter((row) => row.distance < 0.55).map((row) => row.contentItemId);
-      usedHybrid = knnIds.length > 0;
+      usedHybrid = true;
     } catch {
       knnIds = [];
     }
