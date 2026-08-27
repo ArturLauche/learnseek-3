@@ -49,7 +49,7 @@ test("sandbox origin is distinct and iframe cannot access parent", async ({ page
       return "blocked";
     }
   });
-  expect(cookie).toBe("");
+  expect(cookie === "" || cookie === "blocked").toBeTruthy();
 
   const parentStorage = await content.evaluate(() => {
     try {
