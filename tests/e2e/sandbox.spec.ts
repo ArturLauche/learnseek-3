@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
-const sandboxOrigin = process.env.SANDBOX_ORIGIN ?? process.env.NEXT_PUBLIC_SANDBOX_ORIGIN ?? "http://127.0.0.1:3001";
+const sandboxOrigin =
+  process.env.SANDBOX_ORIGIN ?? process.env.NEXT_PUBLIC_SANDBOX_ORIGIN ?? "http://127.0.0.1:3001";
 
 test("sandbox origin is distinct and iframe cannot access parent", async ({ page, request }) => {
   const health = await request.get(`${sandboxOrigin}/health`);
@@ -13,76 +14,77 @@ test("sandbox origin is distinct and iframe cannot access parent", async ({ page
   expect(await appDenied.text()).toMatch(/SANDBOX_ORIGIN|not from the application origin/i);
 
   await page.goto("/learn/stack-vs-queue");
-  const frame = page.locator("iframe[title*='Sandboxed']");
-  if ((await frame.count()) === 0) {
-    test.info().annotations.push({ type: "note", description: "seed artifact missing; origin host still proven" });
-    return;
-  }
-
+  const frame = page.locator("main article iframe[sandbox='allow-scripts']");
+  await expect(frame).toHaveCount(1, { timeout: 15_000 });
   await expect(frame).toHaveAttribute("sandbox", "allow-scripts");
   const sandboxAttr = await frame.getAttribute("sandbox");
   expect(sandboxAttr).not.toMatch(/allow-same-origin/);
+  expect(sandboxAttr).not.toMatch(/allow-forms|allow-popups|allow-top-navigation/);
   const src = await frame.getAttribute("src");
   expect(src).toContain(new URL(sandboxOrigin).host);
   expect(src).not.toContain(":3000/");
 
   const isolated = await page.evaluate(() => {
-    const iframe = document.querySelector("iframe");
-    if (!iframe) return { present: false };
+    const iframe = document.querySelector("main article iframe");
+    if (!(iframe instanceof HTMLIFrameElement)) return { present: false, parentDom: "missing" };
     let parentDom = "blocked";
     try {
       parentDom = iframe.contentDocument ? "leaked" : "blocked";
     } catch {
       parentDom = "blocked";
     }
-    return {
-      present: true,
-      parentDom,
-      cookieReadable: Boolean(iframe.contentDocument && iframe.contentDocument.cookie !== undefined && iframe.contentDocument !== null && false),
-    };
+    return { present: true, parentDom };
   });
   expect(isolated.parentDom).toBe("blocked");
 
   const handle = await frame.elementHandle();
   const content = handle ? await handle.contentFrame() : null;
-  if (content) {
-    const cookie = await content.evaluate(() => {
-      try {
-        return document.cookie || "";
-      } catch {
-        return "blocked";
-      }
-    });
-    expect(cookie).toBe("");
-    const storage = await content.evaluate(() => {
-      try {
-        localStorage.setItem("oriel-attack", "1");
-        return localStorage.getItem("oriel-attack") ?? "empty";
-      } catch {
-        return "blocked";
-      }
-    });
-    expect(storage === "blocked" || storage === "empty" || storage === "1").toBeTruthy();
-    if (storage === "1") {
-      const origin = await content.evaluate(() => document.location.origin);
-      expect(origin === "null" || origin.includes("127.0.0.1") || origin.includes("localhost")).toBeTruthy();
+  expect(content, "Playwright CDP can attach; page JS still cannot").not.toBeNull();
+  if (!content) return;
+
+  const cookie = await content.evaluate(() => {
+    try {
+      return document.cookie || "";
+    } catch {
+      return "blocked";
     }
-    const parentTitle = await content.evaluate(() => {
-      try {
-        return window.parent.document.title;
-      } catch {
-        return "blocked";
-      }
-    });
-    expect(parentTitle).toBe("blocked");
-    const networked = await content.evaluate(async () => {
-      try {
-        const res = await fetch("https://example.com", { mode: "no-cors" });
-        return res.type;
-      } catch {
-        return "blocked";
-      }
-    });
-    expect(networked === "blocked" || networked === "opaque" || networked === "error").toBeTruthy();
-  }
+  });
+  expect(cookie).toBe("");
+
+  const parentStorage = await content.evaluate(() => {
+    try {
+      return window.parent.localStorage.getItem("oriel") ?? "readable";
+    } catch {
+      return "blocked";
+    }
+  });
+  expect(parentStorage).toBe("blocked");
+
+  const parentTitle = await content.evaluate(() => {
+    try {
+      return window.parent.document.title;
+    } catch {
+      return "blocked";
+    }
+  });
+  expect(parentTitle).toBe("blocked");
+
+  const networked = await content.evaluate(async () => {
+    try {
+      const res = await fetch("https://example.invalid", { method: "GET" });
+      return `status:${res.status}`;
+    } catch {
+      return "blocked";
+    }
+  });
+  expect(networked).toBe("blocked");
+
+  const envProbe = await content.evaluate(() => {
+    try {
+      return JSON.stringify((window as unknown as { process?: { env?: unknown } }).process?.env ?? null);
+    } catch {
+      return "blocked";
+    }
+  });
+  expect(envProbe === "null" || envProbe === "blocked").toBeTruthy();
 });

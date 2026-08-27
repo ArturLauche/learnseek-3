@@ -16,7 +16,7 @@ export function LearningFrame({
   const frame = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(360);
   const [failed, setFailed] = useState(false);
-  const [frameSrc, setFrameSrc] = useState(src);
+  const [frameSrc, setFrameSrc] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -31,6 +31,7 @@ export function LearningFrame({
   useEffect(() => {
     function onMessage(event: MessageEvent) {
       if (event.source !== frame.current?.contentWindow) return;
+      if (!frameSrc) return;
       if (event.origin !== "null" && !frameSrc.startsWith(event.origin)) return;
       const data = event.data as { type?: string; height?: number };
       if (!data || typeof data.type !== "string" || !ALLOWED.has(data.type)) return;
@@ -44,17 +45,21 @@ export function LearningFrame({
 
   return (
     <div>
-      <iframe
-        ref={frame}
-        title={title}
-        src={frameSrc}
-        sandbox="allow-scripts"
-        referrerPolicy="no-referrer"
-        allow=""
-        className="w-full rounded-md border border-border bg-background"
-        style={{ height }}
-        onError={() => setFailed(true)}
-      />
+      {frameSrc ? (
+        <iframe
+          ref={frame}
+          title={title}
+          src={frameSrc}
+          sandbox="allow-scripts"
+          referrerPolicy="no-referrer"
+          allow=""
+          className="w-full rounded-md border border-border bg-background"
+          style={{ height }}
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <p className="text-sm text-foreground-muted">Loading interactive scene…</p>
+      )}
       {fallbackText ? (
         <details className="mt-3 text-sm">
           <summary>Text version of this scene</summary>
