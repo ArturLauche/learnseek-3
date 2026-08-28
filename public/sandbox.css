@@ -1,0 +1,78 @@
+:root {
+  color-scheme: light;
+  --fg: #1a1714;
+  --bg: #faf7f0;
+  --muted: #4a453e;
+  --line: #2a2622;
+  --focus: #1a1714;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: Georgia, "Iowan Old Style", Palatino, serif;
+  line-height: 1.5;
+}
+
+main {
+  margin: 1rem;
+  max-width: 40rem;
+}
+
+button,
+[data-choice],
+[data-flip],
+[data-complete],
+[data-restart] {
+  margin: 0.25rem 0.25rem 0 0;
+  padding: 0.5rem 0.8rem;
+  min-height: 2.5rem;
+  font: inherit;
+  color: var(--fg);
+  background: #fff;
+  border: 2px solid var(--line);
+  border-radius: 0.4rem;
+}
+
+button:focus-visible,
+[data-choice]:focus-visible,
+[data-flip]:focus-visible,
+[data-complete]:focus-visible,
+[data-restart]:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --fg: #000;
+    --bg: #fff;
+    --line: #000;
+  }
+  button {
+    border-width: 3px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

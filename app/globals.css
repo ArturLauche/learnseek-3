@@ -1,0 +1,134 @@
+@import "tailwindcss";
+@import "@appica/ui-react/styles.css";
+
+@source "../node_modules/@appica/ui-react/dist";
+
+@theme inline {
+  --font-serif: var(--font-newsreader), "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+}
+
+:root,
+.light {
+  --background: oklch(0.975 0.014 85);
+  --background-subtle: oklch(0.958 0.016 82);
+  --background-muted: oklch(0.938 0.02 80);
+  --background-strong: oklch(0.91 0.022 78);
+  --foreground: oklch(0.24 0.03 50);
+  --foreground-muted: oklch(0.42 0.024 55);
+  --foreground-subtle: oklch(0.56 0.02 60);
+  --foreground-strong: oklch(0.2 0.032 48);
+  --foreground-emphasis: oklch(0.18 0.034 46);
+  --foreground-intense: oklch(0.16 0.036 45);
+  --border: oklch(0.88 0.018 75);
+  --border-muted: oklch(0.92 0.014 80);
+  --border-strong: oklch(0.76 0.028 70);
+  --primary: oklch(0.28 0.038 48);
+  --primary-subtle: oklch(0.28 0.038 48 / 10%);
+  --primary-soft: oklch(0.28 0.038 48 / 16%);
+  --primary-muted: oklch(0.38 0.04 50);
+  --primary-strong: oklch(0.2 0.04 46);
+  --primary-foreground: oklch(0.98 0.01 85);
+  --focus-ring-primary: oklch(0.62 0.12 70 / 30%);
+  --secondary: oklch(0.7 0.12 68);
+  --secondary-subtle: oklch(0.7 0.12 68 / 12%);
+  --secondary-soft: oklch(0.7 0.12 68 / 20%);
+  --secondary-muted: oklch(0.82 0.08 75);
+  --secondary-strong: oklch(0.6 0.13 65);
+  --secondary-emphasis: oklch(0.55 0.14 62);
+  --secondary-intense: oklch(0.48 0.13 58);
+  --secondary-foreground: oklch(0.2 0.03 50);
+  --radius: 0.5rem;
+  --font-sans: var(--font-source-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+.dark {
+  --background: oklch(0.19 0.018 50);
+  --background-subtle: oklch(0.22 0.02 52);
+  --background-muted: oklch(0.26 0.022 54);
+  --background-strong: oklch(0.3 0.024 55);
+  --foreground: oklch(0.94 0.016 85);
+  --foreground-muted: oklch(0.78 0.02 80);
+  --foreground-subtle: oklch(0.64 0.018 75);
+  --foreground-intense: oklch(0.98 0.01 85);
+  --border: oklch(0.32 0.02 55);
+  --border-strong: oklch(0.42 0.024 58);
+  --primary: oklch(0.92 0.02 85);
+  --primary-subtle: oklch(0.92 0.02 85 / 10%);
+  --primary-soft: oklch(0.92 0.02 85 / 18%);
+  --primary-muted: oklch(0.84 0.03 80);
+  --primary-strong: oklch(0.98 0.01 85);
+  --primary-foreground: oklch(0.18 0.03 50);
+  --secondary: oklch(0.72 0.11 70);
+  --secondary-foreground: oklch(0.16 0.03 50);
+}
+
+html {
+  hanging-punctuation: first last;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  background-image:
+    linear-gradient(180deg, oklch(0.98 0.012 85 / 40%), transparent 18rem),
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 27px,
+      oklch(0.45 0.03 55 / 0.04) 28px
+    );
+}
+
+.dark body {
+  background-image:
+    linear-gradient(180deg, oklch(0.22 0.02 52 / 50%), transparent 18rem),
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 27px,
+      oklch(0.9 0.02 85 / 0.03) 28px
+    );
+}
+
+.font-serif {
+  font-family: var(--font-serif);
+}
+
+.admin-mono {
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0.01em;
+}
+.admin-mono h1,
+.admin-mono h2 {
+  font-weight: 500;
+}
+
+@media (prefers-contrast: more) {
+  :root,
+  .light {
+    --foreground: oklch(0.12 0.03 50);
+    --background: oklch(1 0 0);
+    --border: oklch(0.35 0.03 50);
+  }
+  .dark {
+    --foreground: oklch(0.98 0.01 85);
+    --background: oklch(0.1 0.02 50);
+    --border: oklch(0.7 0.02 80);
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
